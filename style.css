@@ -1,0 +1,119 @@
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+}
+
+html{
+    scroll-behavior:smooth;
+}
+
+body{
+    font-family:"Microsoft JhengHei",sans-serif;
+    background:#f4f4f4;
+    color:#333;
+}
+
+header{
+    background:#4f6b58;
+    color:white;
+    text-align:center;
+    padding:60px 20px;
+}
+
+header img{
+    width:180px;
+    height:180px;
+    border-radius:50%;
+    object-fit:cover;
+    border:5px solid white;
+    margin-bottom:20px;
+}
+
+header h1{
+    margin-bottom:10px;
+}
+
+nav{
+    background:#222;
+    text-align:center;
+    padding:15px;
+}
+
+nav a{
+    color:white;
+    text-decoration:none;
+    margin:0 15px;
+    font-weight:bold;
+}
+
+section{
+    max-width:1000px;
+    margin:auto;
+    padding:50px 20px;
+}
+
+h2{
+    color:#4f6b58;
+    margin-bottom:20px;
+}
+
+.card{
+    background:white;
+    padding:20px;
+    margin-bottom:20px;
+    border-radius:10px;
+    box-shadow:0 2px 8px rgba(0,0,0,0.1);
+}
+
+.card ul{
+    margin-left:20px;
+    margin-top:10px;
+}
+
+.skill{
+    margin-bottom:20px;
+}
+
+.bar{
+    height:20px;
+    background:#ddd;
+    border-radius:20px;
+    margin-top:5px;
+}
+
+.value{
+    height:20px;
+    background:#4f6b58;
+    border-radius:20px;
+}
+
+.w90{
+    width:90%;
+}
+
+.w88{
+    width:88%;
+}
+
+.w85{
+    width:85%;
+}
+
+footer{
+    background:#222;
+    color:white;
+    text-align:center;
+    padding:30px;
+}
+
+.fade{
+    opacity:0;
+    transform:translateY(40px);
+    transition:all 1s;
+}
+
+.show{
+    opacity:1;
+    transform:translateY(0);
+}
