@@ -121,6 +121,23 @@
         <ul id="chartLegend" class="legend"></ul>
         <p class="empty-hint" id="chartEmpty">這個月還沒有支出紀錄</p>
       </div>
+
+      <div class="card">
+        <div class="section-head">
+          <h2>本月收入分佈</h2>
+        </div>
+
+        <div class="donut-wrap">
+          <svg id="donutChartIncome" viewBox="0 0 200 200"></svg>
+          <div class="donut-center">
+            <span id="donutTotalIncome">$0</span>
+            <small>總收入</small>
+          </div>
+        </div>
+
+        <ul id="chartLegendIncome" class="legend"></ul>
+        <p class="empty-hint" id="chartEmptyIncome">這個月還沒有收入紀錄</p>
+      </div>
     </section>
 
     <!-- ============ 帳戶 ============ -->
@@ -128,14 +145,17 @@
       <div class="card">
         <div class="section-head">
           <h2>銀行帳戶</h2>
-          <button class="add-mini" id="addAccountBtn">+ 新增帳戶</button>
+          <div class="section-actions">
+            <button class="add-mini secondary" id="transferBtn">⇄ 轉帳</button>
+            <button class="add-mini" id="addAccountBtn">+ 新增帳戶</button>
+          </div>
         </div>
         <ul id="accountList" class="plain-list"></ul>
         <div class="total-row">
           <span>帳戶總餘額</span>
           <strong id="accountsTotal">$0</strong>
         </div>
-        <p class="hint-text">記帳時若選擇銀行帳戶付款，餘額會自動連動扣除。</p>
+        <p class="hint-text">記帳時若選擇銀行帳戶付款，餘額會自動連動扣除；帳戶之間互轉不會影響本月支出/收入統計。</p>
       </div>
     </section>
 

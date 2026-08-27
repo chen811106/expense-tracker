@@ -47,11 +47,11 @@
     { key: "生活費",   color: "var(--c-allowance)", keywords: ["生活費","家用","零用錢","孝親費"] },
     { key: "股利收入", color: "var(--c-dividend)",  keywords: ["股利","股息","配息","除權","除息"] },
     { key: "投資",     color: "var(--c-invest)",    keywords: ["賣股","出場","賣出","股票","證券","期貨","獲利了結","出清"] },
-    { key: "調整",     color: "var(--c-adjust)",    keywords: ["調整","校正","更正","餘額調整","結餘調整","對帳","初始餘額","期初"] }
+    { key: "調整",     color: "var(--c-adjust)",    keywords: ["調整","校正","更正","餘額調整","結餘調整","對帳","初始餘額","期初"] },
+    { key: "其他收入", color: "var(--c-other-income)", keywords: [] }
   ];
   const INCOME_CATEGORY_MAP = Object.fromEntries(INCOME_CATEGORIES.map(c => [c.key, c]));
   const INCOME_FALLBACK_CATEGORY = "其他收入";
-  const INCOME_OTHER_COLOR = "var(--c-other-income)";
 
   function categorizeIncome(text) {
     if (!text) return null;
@@ -65,7 +65,7 @@
 
   function categoryColor(category, type) {
     if (type === "income") {
-      return (INCOME_CATEGORY_MAP[category] || {}).color || INCOME_OTHER_COLOR;
+      return (INCOME_CATEGORY_MAP[category] || {}).color || "var(--c-other-income)";
     }
     return (CATEGORY_MAP[category] || {}).color || "var(--text-faint)";
   }
@@ -390,11 +390,23 @@
     if (card) { card.unbilled += amount * sign; }
   }
 
+  // sign +1 = 執行轉帳（from 帳戶減少、to 帳戶增加）；sign -1 = 刪除轉帳紀錄時還原
+  function applyTransfer(fromId, toId, amount, sign) {
+    const fromAcc = state.accounts.find(a => a.id === fromId);
+    const toAcc = state.accounts.find(a => a.id === toId);
+    if (fromAcc) fromAcc.balance -= amount * sign;
+    if (toAcc) toAcc.balance += amount * sign;
+  }
+
   function deleteTransaction(id) {
     const idx = state.transactions.findIndex(t => t.id === id);
     if (idx === -1) return;
     const tx = state.transactions[idx];
-    applyPaymentDelta(tx.paymentId, tx.amount, tx.type === "income" ? +1 : -1);
+    if (tx.type === "transfer") {
+      applyTransfer(tx.fromAccountId, tx.toAccountId, tx.amount, -1);
+    } else {
+      applyPaymentDelta(tx.paymentId, tx.amount, tx.type === "income" ? +1 : -1);
+    }
     state.transactions.splice(idx, 1);
     renderHome(); renderChart(); renderAccounts(); renderCards();
     saveState(state);
@@ -448,6 +460,18 @@
     const recent = state.transactions.slice(0, 8);
     empty.style.display = recent.length ? "none" : "block";
     list.innerHTML = recent.map(t => {
+      if (t.type === "transfer") {
+        return `
+          <li class="list-item">
+            <span class="item-dot" style="background:var(--c-adjust)"></span>
+            <div class="item-main">
+              <div class="item-title">${escapeHtml(t.item)}</div>
+              <div class="item-sub">${t.date} · 從 ${paymentLabel(t.fromAccountId)} 轉到 ${paymentLabel(t.toAccountId)}</div>
+            </div>
+            <div class="item-amount">⇄ ${money(t.amount)}</div>
+            <button class="item-delete" data-del="${t.id}" aria-label="刪除">✕</button>
+          </li>`;
+      }
       const color = categoryColor(t.category, t.type);
       const isIncome = t.type === "income";
       return `
@@ -467,7 +491,10 @@
         const id = btn.getAttribute("data-del");
         const tx = state.transactions.find(t => t.id === id);
         if (!tx) return;
-        confirmDelete(`「${escapeHtml(tx.item)}」${tx.type === "income" ? "+" : "-"}${money(tx.amount)} 這筆紀錄刪除後無法復原。`, () => deleteTransaction(id));
+        const desc = tx.type === "transfer"
+          ? `「${escapeHtml(tx.item)}」⇄ ${money(tx.amount)} 這筆轉帳紀錄刪除後無法復原，兩個帳戶的餘額會各自還原。`
+          : `「${escapeHtml(tx.item)}」${tx.type === "income" ? "+" : "-"}${money(tx.amount)} 這筆紀錄刪除後無法復原。`;
+        confirmDelete(desc, () => deleteTransaction(id));
       });
     });
   }
@@ -476,7 +503,7 @@
     return s.replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
   }
 
-  /* ================= 圖表（僅統計支出） ================= */
+  /* ================= 圖表（支出／收入各一個圓餅圖，共用同一個月份） ================= */
   let chartMonthOffset = 0;
 
   document.getElementById("prevMonth").addEventListener("click", () => { chartMonthOffset--; renderChart(); });
@@ -485,21 +512,13 @@
     renderChart();
   });
 
-  function renderChart() {
-    const now = new Date();
-    const target = new Date(now.getFullYear(), now.getMonth() + chartMonthOffset, 1);
-    document.getElementById("chartMonthLabel").textContent =
-      `${target.getFullYear()} 年 ${target.getMonth() + 1} 月`;
-
-    const tx = monthTotalSpend(chartMonthOffset);
-    const totals = {};
-    tx.forEach(t => { totals[t.category] = (totals[t.category] || 0) + t.amount; });
-    const total = Object.values(totals).reduce((a, b) => a + b, 0);
-
-    const svg = document.getElementById("donutChart");
-    const legend = document.getElementById("chartLegend");
-    const emptyEl = document.getElementById("chartEmpty");
-    document.getElementById("donutTotal").textContent = money(total);
+  // 共用的甜甜圈圖繪製邏輯：傳入要更新的 DOM id 跟資料，支出／收入圖表都靠它畫
+  function renderDonutChart({ svgId, totalId, legendId, emptyId, entries }) {
+    const svg = document.getElementById(svgId);
+    const legend = document.getElementById(legendId);
+    const emptyEl = document.getElementById(emptyId);
+    const total = entries.reduce((s, e) => s + e.value, 0);
+    document.getElementById(totalId).textContent = money(total);
 
     if (!total) {
       svg.innerHTML = `<circle cx="100" cy="100" r="80" fill="none" stroke="#E2D9CC" stroke-width="26"/>`;
@@ -514,12 +533,9 @@
     const rootStyles = getComputedStyle(document.documentElement);
     const resolveColor = (c) => c.startsWith("var(") ? rootStyles.getPropertyValue(c.slice(4, -1)).trim() : c;
 
-    const entries = CATEGORIES
-      .map(c => ({ key: c.key, color: c.color, value: totals[c.key] || 0 }))
-      .filter(e => e.value > 0)
-      .sort((a, b) => b.value - a.value);
+    const sorted = entries.filter(e => e.value > 0).sort((a, b) => b.value - a.value);
 
-    svg.innerHTML = entries.map(e => {
+    svg.innerHTML = sorted.map(e => {
       const frac = e.value / total;
       const len = frac * circumference;
       const circle = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none"
@@ -530,13 +546,38 @@
       return circle;
     }).join("");
 
-    legend.innerHTML = entries.map(e => `
+    legend.innerHTML = sorted.map(e => `
       <li>
         <span class="item-dot" style="background:${e.color}"></span>
         <span class="legend-name">${e.key}</span>
         <span class="legend-percent">${Math.round((e.value / total) * 100)}%</span>
         <span class="legend-amount">${money(e.value)}</span>
       </li>`).join("");
+  }
+
+  function categoryTotals(transactions) {
+    const totals = {};
+    transactions.forEach(t => { totals[t.category] = (totals[t.category] || 0) + t.amount; });
+    return totals;
+  }
+
+  function renderChart() {
+    const now = new Date();
+    const target = new Date(now.getFullYear(), now.getMonth() + chartMonthOffset, 1);
+    document.getElementById("chartMonthLabel").textContent =
+      `${target.getFullYear()} 年 ${target.getMonth() + 1} 月`;
+
+    const expenseTotals = categoryTotals(monthTotalSpend(chartMonthOffset));
+    renderDonutChart({
+      svgId: "donutChart", totalId: "donutTotal", legendId: "chartLegend", emptyId: "chartEmpty",
+      entries: CATEGORIES.map(c => ({ key: c.key, color: c.color, value: expenseTotals[c.key] || 0 }))
+    });
+
+    const incomeTotals = categoryTotals(monthTotalIncome(chartMonthOffset));
+    renderDonutChart({
+      svgId: "donutChartIncome", totalId: "donutTotalIncome", legendId: "chartLegendIncome", emptyId: "chartEmptyIncome",
+      entries: INCOME_CATEGORIES.map(c => ({ key: c.key, color: c.color, value: incomeTotals[c.key] || 0 }))
+    });
   }
 
   /* ================= 帳戶 ================= */
@@ -585,6 +626,77 @@
     });
   });
 
+  /* ================= 帳戶互轉 =================
+     只在自己的銀行帳戶之間搬錢，不算支出也不算收入，所以不會影響
+     本月支出/收入統計或圓餅圖；有紀錄在「最近紀錄」裡方便回頭查。 */
+  document.getElementById("transferBtn").addEventListener("click", openTransferModal);
+
+  function openTransferModal() {
+    if (state.accounts.length < 2) {
+      modalBody.innerHTML = `
+        <h3>帳戶互轉</h3>
+        <p class="confirm-message">要先有兩個以上的銀行帳戶才能互轉，先去新增一個帳戶吧。</p>
+        <div class="modal-actions">
+          <button class="btn-save" id="transferOkBtn" style="flex:1;">好</button>
+        </div>`;
+      modalOverlay.classList.add("open");
+      modalBody.querySelector("#transferOkBtn").addEventListener("click", closeModal);
+      return;
+    }
+
+    const accountOptions = state.accounts.map(a => `<option value="${a.id}">${escapeHtml(a.name)}</option>`).join("");
+    modalBody.innerHTML = `
+      <h3>帳戶互轉</h3>
+      <label class="field-label">從</label>
+      <select id="transferFrom" class="text-input">${accountOptions}</select>
+      <label class="field-label">轉到</label>
+      <select id="transferTo" class="text-input">${accountOptions}</select>
+      <label class="field-label">金額</label>
+      <input id="transferAmount" class="text-input" type="number" min="0" placeholder="0">
+      <label class="field-label">備註（選填）</label>
+      <input id="transferNote" class="text-input" placeholder="例如：生活費撥款">
+      <p class="hint-text" id="transferHint"></p>
+      <div class="modal-actions">
+        <button class="btn-cancel" id="transferCancelBtn">取消</button>
+        <button class="btn-save" id="transferSaveBtn">轉帳</button>
+      </div>`;
+    modalOverlay.classList.add("open");
+
+    const fromSel = modalBody.querySelector("#transferFrom");
+    const toSel = modalBody.querySelector("#transferTo");
+    toSel.selectedIndex = 1; // 預設「到」跟「從」不是同一個帳戶
+
+    modalBody.querySelector("#transferCancelBtn").addEventListener("click", closeModal);
+    modalBody.querySelector("#transferSaveBtn").addEventListener("click", () => {
+      const fromId = fromSel.value;
+      const toId = toSel.value;
+      const amount = parseFloat(modalBody.querySelector("#transferAmount").value);
+      const hint = modalBody.querySelector("#transferHint");
+
+      if (fromId === toId) { hint.textContent = "「從」跟「轉到」不能是同一個帳戶"; return; }
+      if (!amount || amount <= 0) { hint.textContent = "請輸入有效金額"; return; }
+
+      const fromAcc = state.accounts.find(a => a.id === fromId);
+      const toAcc = state.accounts.find(a => a.id === toId);
+      const note = modalBody.querySelector("#transferNote").value.trim();
+
+      state.transactions.unshift({
+        id: uid(),
+        type: "transfer",
+        date: new Date().toISOString().slice(0, 10),
+        item: note || `${fromAcc.name} → ${toAcc.name}`,
+        amount,
+        fromAccountId: fromId,
+        toAccountId: toId
+      });
+      applyTransfer(fromId, toId, amount, +1);
+
+      closeModal();
+      renderAccounts(); renderHome();
+      saveState(state);
+    });
+  }
+
   /* ================= 信用卡 ================= */
   const CARD_THEMES = ["", "theme-1", "theme-2", "theme-3"];
 
@@ -607,16 +719,25 @@
     list.innerHTML = state.cards.map((c, i) => {
       const { daysLeft, cls } = nextDueInfo(c);
       const badgeText = daysLeft <= 0 ? "已逾期" : `${daysLeft} 天後到期`;
+      const limit = c.limit || 0;
+      const limitBlock = limit > 0 ? `
+          <div class="credit-card-limit">
+            <div class="limit-bar"><div class="limit-fill${c.unbilled / limit >= 0.8 ? " high" : ""}" style="width:${Math.min(100, Math.max(0, (c.unbilled / limit) * 100))}%"></div></div>
+            <div class="limit-text">可用額度 ${money(Math.max(0, limit - c.unbilled))} ／ 額度 ${money(limit)}</div>
+          </div>` : "";
       return `
         <li class="credit-card ${CARD_THEMES[i % CARD_THEMES.length]}">
           <div class="credit-card-top">
             <span class="credit-card-name">${escapeHtml(c.name)}</span>
-            <button class="credit-card-delete" data-del-card="${c.id}" aria-label="刪除">✕</button>
+            <div class="credit-card-actions">
+              <button class="credit-card-edit" data-edit-card="${c.id}" aria-label="編輯">✎</button>
+              <button class="credit-card-delete" data-del-card="${c.id}" aria-label="刪除">✕</button>
+            </div>
           </div>
           <div class="credit-card-amount">
             <small>本期未出帳金額</small>
             ${money(c.unbilled)}
-          </div>
+          </div>${limitBlock}
           <div class="credit-card-bottom">
             <span>每月 ${c.billingDay} 號結帳 · ${c.dueDay} 號前繳款</span>
             <span class="due-badge ${cls}"><span class="due-dot"></span>${badgeText}</span>
@@ -636,30 +757,48 @@
         });
       });
     });
+    list.querySelectorAll("[data-edit-card]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const card = state.cards.find(c => c.id === btn.getAttribute("data-edit-card"));
+        if (card) openCardModal(card);
+      });
+    });
   }
 
-  document.getElementById("addCardBtn").addEventListener("click", () => {
+  function openCardModal(existing) {
     openModal({
-      title: "新增信用卡",
+      title: existing ? "編輯信用卡" : "新增信用卡",
       fields: [
         { key: "name", label: "卡片名稱", type: "text", placeholder: "例如：玉山 Only 卡" },
         { key: "unbilled", label: "本期未出帳金額", type: "number", placeholder: "0" },
+        { key: "limit", label: "信用卡額度（選填，用來算可用額度）", type: "number", placeholder: "0 表示不設定" },
         { key: "billingDay", label: "結帳日（每月幾號）", type: "number", placeholder: "20" },
         { key: "dueDay", label: "繳款截止日（每月幾號）", type: "number", placeholder: "5" }
       ],
+      initial: existing ? {
+        name: existing.name, unbilled: existing.unbilled, limit: existing.limit || "",
+        billingDay: existing.billingDay, dueDay: existing.dueDay
+      } : null,
       onSave: (v) => {
         if (!v.name) return;
-        state.cards.push({
-          id: uid(),
+        const data = {
           name: v.name,
           unbilled: parseFloat(v.unbilled) || 0,
+          limit: parseFloat(v.limit) || 0,
           billingDay: Math.min(28, Math.max(1, parseInt(v.billingDay) || 20)),
           dueDay: Math.min(28, Math.max(1, parseInt(v.dueDay) || 5))
-        });
+        };
+        if (existing) {
+          Object.assign(existing, data);
+        } else {
+          state.cards.push({ id: uid(), ...data });
+        }
         renderCards(); renderHome();
       }
     });
-  });
+  }
+
+  document.getElementById("addCardBtn").addEventListener("click", () => openCardModal(null));
 
   /* ================= 週期性繳費（每筆各自設定重置日） ================= */
   function renderRecurring() {
