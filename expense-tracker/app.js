@@ -297,6 +297,10 @@
     state.recurring.forEach(r => {
       if (r.lastResetMonth !== mKey && now.getDate() >= r.resetDay) {
         r.done = false;
+        // 上一期繳款留下的那筆交易紀錄本身不會動（是已經花掉的真實支出，
+        // 要繼續留在帳本裡），只是解除跟這個待辦項目的關聯，這樣新的一期
+        // 勾選繳款時才會另外開一筆新的紀錄，不會誤刪到上一期的。
+        r.lastTxId = null;
         r.lastResetMonth = mKey;
         changed = true;
       }
@@ -493,6 +497,14 @@
       payCardBill(tx.cardId, tx.paymentId, tx.amount, -1);
     } else {
       applyPaymentDelta(tx.paymentId, tx.amount, tx.type === "income" ? +1 : -1);
+    }
+    // 如果這筆是從「週期性繳費清單」勾選繳款自動記下來的，刪掉它也要
+    // 把那個待辦項目取消勾選，不然會變成錢已經還回來了、清單上卻還
+    // 顯示「已繳」的不一致狀態。
+    if (tx.recurringId) {
+      const rec = state.recurring.find(r => r.id === tx.recurringId);
+      if (rec) { rec.done = false; rec.lastTxId = null; }
+      renderRecurring();
     }
     state.transactions.splice(idx, 1);
     renderHome(); renderChart(); renderAccounts(); renderCards();
@@ -1071,9 +1083,25 @@
     list.querySelectorAll("[data-toggle]").forEach(btn => {
       btn.addEventListener("click", () => {
         const r = state.recurring.find(x => x.id === btn.getAttribute("data-toggle"));
-        r.done = !r.done;
-        renderRecurring();
-        saveState(state);
+        if (!r) return;
+        if (r.done) {
+          // 取消勾選：把剛剛那筆繳款紀錄一併刪掉，付款帳戶/現金/信用卡
+          // 未出帳金額都跟著還原，避免「打勾取消了、錢卻還是扣著」。
+          if (r.lastTxId) {
+            const idx = state.transactions.findIndex(t => t.id === r.lastTxId);
+            if (idx !== -1) {
+              const tx = state.transactions[idx];
+              applyPaymentDelta(tx.paymentId, tx.amount, -1);
+              state.transactions.splice(idx, 1);
+            }
+            r.lastTxId = null;
+          }
+          r.done = false;
+          renderRecurring(); renderHome(); renderChart(); renderAccounts(); renderCards();
+          saveState(state);
+        } else {
+          openRecurringPayModal(r);
+        }
       });
     });
     list.querySelectorAll("[data-del-rec]").forEach(btn => {
@@ -1093,6 +1121,58 @@
         const r = state.recurring.find(x => x.id === btn.getAttribute("data-edit-rec"));
         if (r) openRecurringModal(r);
       });
+    });
+  }
+
+  /* ================= 固定繳費：勾選繳款 =================
+     點下待辦項目的勾選框時，先問「用什麼方式繳的」，選好之後才真的
+     記一筆支出（帳戶/現金/信用卡未出帳跟著連動），並記住這筆交易的
+     id（lastTxId），這樣取消勾選、或之後在「最近紀錄」直接刪掉這筆
+     交易時，待辦清單才能同步把勾選狀態還原、不會兜不起來。 */
+  function openRecurringPayModal(r) {
+    const methodOptions = `<option value="cash">現金</option>` +
+      (state.accounts.length ? `<optgroup label="銀行帳戶">` + state.accounts.map(a => `<option value="${a.id}">${escapeHtml(a.name)}</option>`).join("") + `</optgroup>` : "") +
+      (state.cards.length ? `<optgroup label="信用卡">` + state.cards.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("") + `</optgroup>` : "");
+
+    modalBody.innerHTML = `
+      <h3>${escapeHtml(r.name)} 已繳款</h3>
+      <label class="field-label">金額</label>
+      <input id="recPayAmount" class="text-input" type="number" min="0" value="${r.amount}">
+      <label class="field-label">用什麼方式繳的</label>
+      <select id="recPayMethod" class="text-input">${methodOptions}</select>
+      <p class="hint-text" id="recPayHint"></p>
+      <div class="modal-actions">
+        <button class="btn-cancel" id="recPayCancelBtn">取消</button>
+        <button class="btn-save" id="recPaySaveBtn">確認</button>
+      </div>`;
+    modalOverlay.classList.add("open");
+
+    modalBody.querySelector("#recPayCancelBtn").addEventListener("click", closeModal);
+    modalBody.querySelector("#recPaySaveBtn").addEventListener("click", () => {
+      const amount = parseFloat(modalBody.querySelector("#recPayAmount").value);
+      const paymentId = modalBody.querySelector("#recPayMethod").value;
+      const hint = modalBody.querySelector("#recPayHint");
+      if (!amount || amount <= 0) { hint.textContent = "請輸入有效金額"; return; }
+
+      const tx = {
+        id: uid(),
+        type: "expense",
+        date: new Date().toISOString().slice(0, 10),
+        item: r.name,
+        amount,
+        category: categorize(r.name),
+        paymentId,
+        recurringId: r.id
+      };
+      state.transactions.unshift(tx);
+      applyPaymentDelta(paymentId, amount, +1);
+
+      r.done = true;
+      r.lastTxId = tx.id;
+
+      closeModal();
+      renderRecurring(); renderHome(); renderChart(); renderAccounts(); renderCards();
+      saveState(state);
     });
   }
 
