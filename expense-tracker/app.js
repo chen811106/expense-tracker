@@ -180,6 +180,19 @@
     (s.transactions || []).forEach(t => {
       if (!t.type) t.type = "expense";
     });
+    // 信用卡：把「本期應繳金額」（statementAmount，結帳日已鎖定、等
+    // 繳款截止日要繳的錢）跟「已刷卡未出帳金額」（unbilled，結帳日之後
+    // 新刷的、算在下一期帳單的錢）分開追蹤。舊資料只有一個 unbilled
+    // 欄位，遷移時當成「本期應繳」處理（比較符合使用者原本輸入這個
+    // 欄位時的認知），並把 lastBilledMonth 設成這個月，避免遷移完
+    // 馬上又被下面的結帳邏輯誤判成「這個月還沒結帳」而重複合併一次。
+    (s.cards || []).forEach(c => {
+      if (c.statementAmount === undefined) {
+        c.statementAmount = c.unbilled || 0;
+        c.unbilled = 0;
+      }
+      if (!c.lastBilledMonth) c.lastBilledMonth = mKey;
+    });
     if (!s.categoryKeywords) s.categoryKeywords = {};
     CATEGORIES.forEach(c => {
       if (!Array.isArray(s.categoryKeywords[c.key])) s.categoryKeywords[c.key] = [];
@@ -274,6 +287,30 @@
     if (changed) persistLocal(state);
   }
   maybeResetRecurring();
+
+  /* ---------------- 信用卡結帳日：把「已刷卡未出帳」併入「本期應繳」 ----------------
+     每張卡結帳日一到，就把這段期間累積的 unbilled（已刷卡未出帳）併進
+     statementAmount（本期應繳，繳款截止日前要繳的錢），unbilled 歸零、
+     重新開始累積下一期的新刷卡金額。用「合併」而不是「取代」，所以就算
+     上一期還沒繳完也不會不見，會繼續累加在 statementAmount 上——這樣
+     不管有沒有準時繳款，金額永遠只會被記錄、合併，不會被自動清掉或刪除。
+     同樣只在載入當下判斷、只更動本機資料，真正發布給雲端會等使用者
+     下一次實際操作時才一併送出。 */
+  function maybeCloseBillingCycle() {
+    const now = new Date();
+    const mKey = currentMonthKey(now);
+    let changed = false;
+    state.cards.forEach(c => {
+      if (c.lastBilledMonth !== mKey && now.getDate() >= c.billingDay) {
+        c.statementAmount = (c.statementAmount || 0) + (c.unbilled || 0);
+        c.unbilled = 0;
+        c.lastBilledMonth = mKey;
+        changed = true;
+      }
+    });
+    if (changed) persistLocal(state);
+  }
+  maybeCloseBillingCycle();
 
   /* ---------------- 共用工具 ---------------- */
   const fmt = new Intl.NumberFormat("zh-Hant-TW");
@@ -418,11 +455,12 @@
     if (toAcc) toAcc.balance += amount * sign;
   }
 
-  // 信用卡繳款：sign +1 = 執行繳款（付款帳戶／現金減少、該卡未出帳金額減少）；
-  // sign -1 = 刪除這筆繳款紀錄時還原。現金不影響任何帳戶餘額。
+  // 信用卡繳款：sign +1 = 執行繳款（付款帳戶／現金減少、該卡本期應繳金額
+  // statementAmount 減少）；sign -1 = 刪除這筆繳款紀錄時還原。現金不影響
+  // 任何帳戶餘額。只還「本期應繳」，不動已刷卡未出帳（unbilled）的部分。
   function payCardBill(cardId, paymentId, amount, sign) {
     const card = state.cards.find(c => c.id === cardId);
-    if (card) card.unbilled -= amount * sign;
+    if (card) card.statementAmount -= amount * sign;
     if (paymentId === "cash") return;
     const acc = state.accounts.find(a => a.id === paymentId);
     if (acc) acc.balance -= amount * sign;
@@ -540,7 +578,7 @@
         const desc = tx.type === "transfer"
           ? `「${escapeHtml(tx.item)}」⇄ ${money(tx.amount)} 這筆轉帳紀錄刪除後無法復原，兩個帳戶的餘額會各自還原。`
           : tx.type === "cardpayment"
-          ? `這筆信用卡繳款紀錄（💳 ${money(tx.amount)}）刪除後無法復原，支付帳戶的餘額跟信用卡的未出帳金額都會還原。`
+          ? `這筆信用卡繳款紀錄（💳 ${money(tx.amount)}）刪除後無法復原，支付帳戶的餘額跟信用卡的本期應繳金額都會還原。`
           : `「${escapeHtml(tx.item)}」${tx.type === "income" ? "+" : "-"}${money(tx.amount)} 這筆紀錄刪除後無法復原。`;
         confirmDelete(desc, () => deleteTransaction(id));
       });
@@ -765,14 +803,25 @@
     empty.style.display = state.cards.length ? "none" : "block";
 
     list.innerHTML = state.cards.map((c, i) => {
-      const { daysLeft, cls } = nextDueInfo(c);
-      const badgeText = daysLeft <= 0 ? "已逾期" : `${daysLeft} 天後到期`;
+      const statementAmount = c.statementAmount || 0;
+      const unbilled = c.unbilled || 0;
+      // 到期badge只在「本期應繳」大於 0 時才顯示，避免明明沒有待繳金額
+      // 卻還被一個逾期警示嚇到。
+      const dueBlock = statementAmount > 0 ? (() => {
+        const { daysLeft, cls } = nextDueInfo(c);
+        const badgeText = daysLeft <= 0 ? "已逾期" : `${daysLeft} 天後到期`;
+        return `<span class="due-badge ${cls}"><span class="due-dot"></span>${badgeText}</span>`;
+      })() : `<span class="due-badge">目前無待繳</span>`;
       const limit = c.limit || 0;
+      const totalOwed = statementAmount + unbilled; // 額度看的是這張卡總共欠多少，不分本期/下期
       const limitBlock = limit > 0 ? `
           <div class="credit-card-limit">
-            <div class="limit-bar"><div class="limit-fill${c.unbilled / limit >= 0.8 ? " high" : ""}" style="width:${Math.min(100, Math.max(0, (c.unbilled / limit) * 100))}%"></div></div>
-            <div class="limit-text">可用額度 ${money(Math.max(0, limit - c.unbilled))} ／ 額度 ${money(limit)}</div>
+            <div class="limit-bar"><div class="limit-fill${totalOwed / limit >= 0.8 ? " high" : ""}" style="width:${Math.min(100, Math.max(0, (totalOwed / limit) * 100))}%"></div></div>
+            <div class="limit-text">可用額度 ${money(Math.max(0, limit - totalOwed))} ／ 額度 ${money(limit)}</div>
           </div>` : "";
+      const unbilledNote = unbilled > 0
+        ? `<div class="credit-card-unbilled-note">已刷卡未出帳 ${money(unbilled)}（下期帳單，${c.billingDay} 號結帳後才會列入應繳）</div>`
+        : "";
       return `
         <li class="credit-card ${CARD_THEMES[i % CARD_THEMES.length]}">
           <div class="credit-card-top">
@@ -783,14 +832,14 @@
             </div>
           </div>
           <div class="credit-card-amount">
-            <small>本期未出帳金額</small>
-            ${money(c.unbilled)}
-          </div>${limitBlock}
+            <small>本期應繳金額</small>
+            ${money(statementAmount)}
+          </div>${unbilledNote}${limitBlock}
           <div class="credit-card-bottom">
             <span>每月 ${c.billingDay} 號結帳 · ${c.dueDay} 號前繳款</span>
-            <span class="due-badge ${cls}"><span class="due-dot"></span>${badgeText}</span>
+            ${dueBlock}
           </div>
-          ${c.unbilled > 0 ? `<button class="credit-card-pay-btn" data-pay-card="${c.id}">✓ 已繳款</button>` : ""}
+          ${statementAmount > 0 ? `<button class="credit-card-pay-btn" data-pay-card="${c.id}">✓ 已繳款</button>` : ""}
         </li>`;
     }).join("");
 
@@ -805,7 +854,8 @@
         const id = btn.getAttribute("data-del-card");
         const card = state.cards.find(c => c.id === id);
         if (!card) return;
-        confirmDelete(`信用卡「${escapeHtml(card.name)}」（本期未出帳 ${money(card.unbilled)}）刪除後無法復原。`, () => {
+        const owed = (card.statementAmount || 0) + (card.unbilled || 0);
+        confirmDelete(`信用卡「${escapeHtml(card.name)}」（目前欠款 ${money(owed)}）刪除後無法復原。`, () => {
           state.cards = state.cards.filter(c => c.id !== id);
           renderCards(); renderHome();
           saveState(state);
@@ -825,19 +875,21 @@
       title: existing ? "編輯信用卡" : "新增信用卡",
       fields: [
         { key: "name", label: "卡片名稱", type: "text", placeholder: "例如：玉山 Only 卡" },
-        { key: "unbilled", label: "本期未出帳金額", type: "number", placeholder: "0" },
+        { key: "statementAmount", label: "本期應繳金額（繳款截止日前要繳的錢）", type: "number", placeholder: "0" },
+        { key: "unbilled", label: "已刷卡未出帳金額（下期才要繳，選填）", type: "number", placeholder: "0" },
         { key: "limit", label: "信用卡額度（選填，用來算可用額度）", type: "number", placeholder: "0 表示不設定" },
         { key: "billingDay", label: "結帳日（每月幾號）", type: "number", placeholder: "20" },
         { key: "dueDay", label: "繳款截止日（每月幾號）", type: "number", placeholder: "5" }
       ],
       initial: existing ? {
-        name: existing.name, unbilled: existing.unbilled, limit: existing.limit || "",
-        billingDay: existing.billingDay, dueDay: existing.dueDay
+        name: existing.name, statementAmount: existing.statementAmount, unbilled: existing.unbilled,
+        limit: existing.limit || "", billingDay: existing.billingDay, dueDay: existing.dueDay
       } : null,
       onSave: (v) => {
         if (!v.name) return;
         const data = {
           name: v.name,
+          statementAmount: parseFloat(v.statementAmount) || 0,
           unbilled: parseFloat(v.unbilled) || 0,
           limit: parseFloat(v.limit) || 0,
           billingDay: Math.min(28, Math.max(1, parseInt(v.billingDay) || 20)),
@@ -846,7 +898,10 @@
         if (existing) {
           Object.assign(existing, data);
         } else {
-          state.cards.push({ id: uid(), ...data });
+          // 新卡的 lastBilledMonth 設成這個月：避免剛輸入好「本期應繳」跟
+          // 「已刷卡未出帳」兩個分開的金額，一存檔就被結帳邏輯誤判成
+          // 「這個月的結帳日還沒處理過」而立刻合併在一起。
+          state.cards.push({ id: uid(), lastBilledMonth: currentMonthKey(), ...data });
         }
         renderCards(); renderHome();
       }
@@ -854,15 +909,17 @@
   }
 
   /* ================= 信用卡繳款 =================
-     記一筆「繳款」：從某個帳戶（或現金）付錢，把這張卡的未出帳金額
-     沖掉一部分或全部。這筆錢在買東西當下（applyPaymentDelta 把 unbilled
-     加上去的時候）就已經算過一次支出了，所以繳款本身不算新的支出，
-     也不算收入 —— 跟帳戶互轉一樣，只是單純的資金移動紀錄。 */
+     記一筆「繳款」：從某個帳戶（或現金）付錢，把這張卡「本期應繳金額」
+     （statementAmount）沖掉一部分或全部——只還本期已經出帳、快到期的
+     錢，不會動到「已刷卡未出帳」（unbilled，屬於下一期帳單）的部分。
+     這筆錢在買東西當下（applyPaymentDelta 把 unbilled 加上去的時候）
+     就已經算過一次支出了，所以繳款本身不算新的支出，也不算收入 ——
+     跟帳戶互轉一樣，只是單純的資金移動紀錄。 */
   function openCardPaymentModal(card) {
-    if (card.unbilled <= 0) {
+    if (card.statementAmount <= 0) {
       modalBody.innerHTML = `
         <h3>信用卡繳款</h3>
-        <p class="confirm-message">「${escapeHtml(card.name)}」目前沒有未出帳金額，不需要繳款。</p>
+        <p class="confirm-message">「${escapeHtml(card.name)}」目前沒有應繳金額，不需要繳款。</p>
         <div class="modal-actions">
           <button class="btn-save" id="cardPayOkBtn" style="flex:1;">好</button>
         </div>`;
@@ -877,13 +934,13 @@
 
     modalBody.innerHTML = `
       <h3>信用卡繳款 · ${escapeHtml(card.name)}</h3>
-      <p class="hint-text" style="margin:0 0 4px;">本期未出帳金額 ${money(card.unbilled)}</p>
+      <p class="hint-text" style="margin:0 0 4px;">本期應繳金額 ${money(card.statementAmount)}</p>
       <label class="field-label">繳款金額</label>
       <div class="type-toggle" id="cardPayAmountToggle">
         <button type="button" class="type-btn active" data-mode="full">全部</button>
         <button type="button" class="type-btn" data-mode="custom">自訂金額</button>
       </div>
-      <input id="cardPayAmount" class="text-input" type="number" min="0" max="${card.unbilled}" value="${card.unbilled}" readonly style="margin-top:8px;">
+      <input id="cardPayAmount" class="text-input" type="number" min="0" max="${card.statementAmount}" value="${card.statementAmount}" readonly style="margin-top:8px;">
       <label class="field-label">用什麼方式繳款</label>
       <select id="cardPayMethod" class="text-input">${methodOptions}</select>
       <p class="hint-text" id="cardPayHint"></p>
@@ -903,7 +960,7 @@
       amountMode = btn.getAttribute("data-mode");
       amountToggle.querySelectorAll(".type-btn").forEach(b => b.classList.toggle("active", b === btn));
       if (amountMode === "full") {
-        amountInput.value = card.unbilled;
+        amountInput.value = card.statementAmount;
         amountInput.readOnly = true;
       } else {
         amountInput.readOnly = false;
@@ -917,7 +974,7 @@
       const amount = parseFloat(amountInput.value);
       const paymentId = modalBody.querySelector("#cardPayMethod").value;
       if (!amount || amount <= 0) { hint.textContent = "請輸入有效金額"; return; }
-      if (amount > card.unbilled) { hint.textContent = `金額不能超過本期未出帳金額 ${money(card.unbilled)}`; return; }
+      if (amount > card.statementAmount) { hint.textContent = `金額不能超過本期應繳金額 ${money(card.statementAmount)}`; return; }
 
       state.transactions.unshift({
         id: uid(),

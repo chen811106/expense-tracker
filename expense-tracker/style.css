@@ -472,6 +472,12 @@ body{
 }
 .credit-card-amount small{ font-size: 11px; font-weight: 400; opacity: .85; display: block; margin-bottom: 2px; }
 
+.credit-card-unbilled-note{
+  font-size: 11px;
+  opacity: .85;
+  margin-top: 8px;
+}
+
 .credit-card-limit{ margin-top: 12px; }
 .limit-bar{
   width: 100%;
