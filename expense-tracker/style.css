@@ -45,6 +45,15 @@
 
 *{ box-sizing: border-box; }
 
+/* html 也要塗上跟 App 一樣的底色：手機瀏覽器在上下滑到底、出現回彈
+   效果時，露出來的其實是 html 元素的背景，不是 body 的，如果沒設定
+   就會看到瀏覽器預設的白色或黑色。overscroll-behavior:none 則是直接
+   關掉那個回彈/露底色的效果，滑到頂/底就直接停住，不會再彈一下。 */
+html{
+  background: var(--bg);
+  overscroll-behavior: none;
+}
+
 body{
   margin: 0;
   font-family: "PingFang TC","Noto Sans TC","Microsoft JhengHei",-apple-system,BlinkMacSystemFont,sans-serif;
@@ -55,6 +64,7 @@ body{
   justify-content: center;
   min-height: 100vh;
   padding: 24px 12px;
+  overscroll-behavior: none;
 }
 
 /* ---------- 手機外框（桌面預覽用） ---------- */
