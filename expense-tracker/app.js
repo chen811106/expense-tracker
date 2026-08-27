@@ -14,6 +14,26 @@
 (function () {
   "use strict";
 
+  /* ---------------- 禁止手機雙指縮放 / 雙擊縮放 ----------------
+     CSS 的 touch-action 跟 viewport meta 的 maximum-scale／user-scalable
+     在部分瀏覽器（特別是 iOS Safari 10 之後）其實會被忽略，所以額外用
+     JS 攔截手勢事件當作第二層保險：
+     - gesturestart/gesturechange 是 Safari 專屬的雙指縮放手勢事件。
+     - touchmove 一旦偵測到兩指以上，代表使用者正在 pinch，直接擋掉。
+     - touchend 距離上一次 touchend 在 300ms 內，視為雙擊，也擋掉，
+       避免快速點兩下把畫面放大。 */
+  document.addEventListener("gesturestart", (e) => e.preventDefault());
+  document.addEventListener("gesturechange", (e) => e.preventDefault());
+  document.addEventListener("touchmove", (e) => {
+    if (e.touches.length > 1) e.preventDefault();
+  }, { passive: false });
+  let lastTouchEnd = 0;
+  document.addEventListener("touchend", (e) => {
+    const now = Date.now();
+    if (now - lastTouchEnd <= 300) e.preventDefault();
+    lastTouchEnd = now;
+  }, { passive: false });
+
   /* ---------------- 支出分類設定 ---------------- */
   const CATEGORIES = [
     { key: "吃飯",        color: "var(--c-food)",    keywords: ["早餐","午餐","晚餐","消夜","宵夜","咖啡","飲料","便當","餐廳","小吃","火鍋","燒烤","飯","麵","吃","茶","星巴克","超商","熱炒","早午餐","甜點","蛋糕","滷味","食材","買菜","生鮮","菜市場","果菜","蔬菜","水果","海鮮","豬肉","雞肉","牛肉","市場","肉","蛋","菜","優格","奇亞籽","食用油","橄欖油","沙拉油","苦茶油","麻油","堅果","牛奶","起司","豆腐","雞蛋"] },
@@ -1033,7 +1053,12 @@
       const tab = btn.getAttribute("data-tab");
       document.querySelectorAll(".nav-btn").forEach(b => b.classList.toggle("active", b === btn));
       document.querySelectorAll(".tab-panel").forEach(p => p.classList.toggle("active", p.id === `tab-${tab}`));
-      window.scrollTo({ top: 0, behavior: "instant" }); // 切分頁時捲回最上面，避免停在上個分頁的捲動位置
+      // 切分頁時捲回最上面，避免停在上個分頁的捲動位置：手機版捲動是在
+      // .content 內部（見 style.css 的手機 media query），桌機預覽版
+      // 捲動的是整個視窗，兩個都重置才能涵蓋兩種情況。
+      const contentEl = document.querySelector(".content");
+      if (contentEl) contentEl.scrollTop = 0;
+      window.scrollTo({ top: 0, behavior: "instant" });
 
       const titles = {
         home: "今天想記點什麼？",

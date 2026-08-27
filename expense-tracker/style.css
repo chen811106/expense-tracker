@@ -52,6 +52,11 @@
 html{
   background: var(--bg);
   overscroll-behavior: none;
+  /* 只允許上下／左右平移，不包含 pinch-zoom 這個手勢，瀏覽器就不會處理
+     雙指縮放。iOS Safari 從 10 版開始其實會忽略 viewport meta 裡的
+     maximum-scale／user-scalable=no，所以縮放要靠這個 touch-action 加上
+     下面 app.js 裡的手勢攔截，兩層一起擋才會真的擋住。 */
+  touch-action: pan-x pan-y;
 }
 
 body{
@@ -65,6 +70,7 @@ body{
   min-height: 100vh;
   padding: 24px 12px;
   overscroll-behavior: none;
+  touch-action: pan-x pan-y;
 }
 
 /* ---------- 手機外框（桌面預覽用） ---------- */
@@ -124,12 +130,9 @@ body{
 .sync-badge.on{ opacity: 1; }
 
 /* ---------- 內容區 ----------
-   不在這裡開自己的捲動（不用 overflow-y:auto）。改用「sticky footer」
-   模式：.content 用 flex:1 撐開高度，底部導覽列用 position:sticky
-   貼在畫面最下面，捲動交給最外層（瀏覽器分頁，或是 Claude Artifact
-   檢視器自己的捲軸）處理。這樣不管頁面是被包在什麼樣的外層容器裡，
-   都不用去猜測、鎖定實際螢幕高度是多少，導覽列永遠找得到、按得到，
-   跟 LINE 那種原生 App 的底部列滑動方式一樣。 */
+   這裡只負責用 flex:1 撐開剩餘高度。手機版的捲動方式（固定畫面高度，
+   捲動收在 .content 內部）另外寫在下面的手機 media query 裡；桌機版
+   預覽用的外框沒有鎖高度，維持原本整頁捲動即可。 */
 .content{
   flex: 1;
   padding: 4px 18px 20px;
@@ -663,16 +666,28 @@ body{
 .chip-empty{ font-size: 12px; color: var(--text-faint); margin-top: 6px; }
 
 @media (max-width: 460px){
+  /* 手機上改用「固定畫面高度 + 內部捲動」的做法（跟大部分原生 App／
+     LINE 一樣）：.phone 鎖定剛好一個螢幕高，捲動全部收進 .content
+     內部處理，.bottom-nav 就永遠在 .phone 底部、不會消失。
+
+     之前試過讓 .phone 高度不設限、靠 .bottom-nav 的 position:sticky
+     去黏住「外層」的捲動範圍——這在部分內嵌環境（例如 Claude Artifact
+     的預覽框）裡，外層容器本身的捲動跟這個網頁其實是分開的兩層，
+     sticky 黏的對象黏錯了，結果又變回「要滑到最底部才看得到功能列」
+     的舊問題。改成畫面本身不會變高、捲動只在 .content 裡面發生，
+     不管被包在什麼樣的容器裡，都不用去猜測、依賴外層怎麼捲動。 */
   body{ padding: 0; }
   .phone{
     border-radius: 0;
     max-width: 100%;
-    min-height: 100vh;
-    min-height: 100dvh;
-    /* border-radius 已經是 0，不需要再靠 overflow:hidden 裁圓角，
-       改成 visible 讓 .bottom-nav 的 position:sticky 能貼著「真正的」
-       瀏覽器／Artifact 檢視器可視範圍，而不是被 .phone 自己的裁切
-       框關住、貼到整個頁面的最底端才出現。 */
-    overflow: visible;
+    min-height: 0; /* 蓋掉桌機版預覽用的 780px 下限，避免跟下面的固定高度打架 */
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+  }
+  .content{
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: none;
   }
 }
