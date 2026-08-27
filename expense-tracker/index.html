@@ -19,6 +19,8 @@
 </head>
 <body>
 
+<script type="application/json" id="app-state"></script>
+
 <div class="phone">
 
   <header class="topbar">
@@ -26,7 +28,10 @@
       <p class="topbar-eyebrow">拾光記帳</p>
       <h1 id="pageTitle">今天想記點什麼？</h1>
     </div>
-    <div class="topbar-date" id="todayDate"></div>
+    <div class="topbar-side">
+      <div class="topbar-date" id="todayDate"></div>
+      <span class="sync-badge" id="syncBadge"></span>
+    </div>
   </header>
 
   <main class="content">

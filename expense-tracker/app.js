@@ -1,6 +1,14 @@
 /* =========================================================
    拾光記帳 · Healing Ledger — 前端互動邏輯（V1 原型）
-   資料存於 localStorage，尚未串接後端 / 真實 AI 分類服務。
+
+   儲存策略：
+   - 一律先寫入 localStorage（單機也能用，離線不中斷）。
+   - 若執行環境提供 Claude Artifact 的 `artifact` capability
+     （也就是以 Claude Artifact 網址開啟時），額外把整份頁面
+     連同最新資料發布出去，達成跨裝置同步 —— 每個打開同一個
+     Artifact 連結的裝置，看到的都會是最後一次發布的版本。
+   - 在一般網頁（GitHub Pages）或本機檔案開啟時沒有這個
+     capability，會自動略過雲端同步，僅維持單機 localStorage。
    ========================================================= */
 
 (function () {
@@ -37,6 +45,7 @@
     const thisMonth = (day) => iso(new Date(now.getFullYear(), now.getMonth(), day));
 
     return {
+      updatedAt: Date.now(),
       accounts: [
         { id: "a1", name: "國泰銀行", balance: 52340 },
         { id: "a2", name: "台北富邦", balance: 18000 },
@@ -65,21 +74,121 @@
     };
   }
 
-  function loadState() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) return JSON.parse(raw);
-    } catch (e) { /* ignore corrupted storage */ }
-    const seeded = seedState();
-    saveState(seeded);
-    return seeded;
+  function readJson(str) {
+    try { return JSON.parse(str); } catch (e) { return null; }
   }
 
-  function saveState(s) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+  // 從頁面內嵌的 <script id="app-state"> 讀出「目前這份文件」記錄的資料
+  // （Claude Artifact 每次發布都會把最新資料連同整份頁面一起存起來，
+  //  所以其他裝置打開同一個網址時，這個內嵌資料就是最新的雲端版本）
+  function readEmbeddedState() {
+    const el = document.getElementById("app-state");
+    if (!el || !el.textContent.trim()) return null;
+    return readJson(el.textContent);
+  }
+
+  function readLocalState() {
+    return readJson(localStorage.getItem(STORAGE_KEY) || "");
+  }
+
+  // 本機與內嵌（雲端）兩份資料都存在時，用 updatedAt 挑比較新的那份
+  function loadState() {
+    const embedded = readEmbeddedState();
+    const local = readLocalState();
+    let chosen;
+    if (embedded && local) {
+      chosen = (local.updatedAt || 0) >= (embedded.updatedAt || 0) ? local : embedded;
+    } else {
+      chosen = embedded || local || seedState();
+    }
+    if (!chosen.updatedAt) chosen.updatedAt = Date.now();
+    return chosen;
+  }
+
+  function persistLocal(s) {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); } catch (e) { /* 儲存空間不足等情況靜默略過 */ }
+  }
+
+  function embedStateInDom(s) {
+    let el = document.getElementById("app-state");
+    if (!el) {
+      el = document.createElement("script");
+      el.type = "application/json";
+      el.id = "app-state";
+      document.body.insertBefore(el, document.body.firstChild);
+    }
+    el.textContent = JSON.stringify(s);
+  }
+
+  // Claude Artifact 的 `artifact` capability：可用時，儲存動作會把整份
+  // 頁面連同最新資料一起發布，所有打開同一連結的裝置都會同步到這份。
+  let cloudApi = null;
+  let cloudReady = false;
+
+  async function initCloud() {
+    if (typeof window.claude === "undefined" || typeof window.claude.use !== "function") {
+      cloudReady = true;
+      updateSyncBadge();
+      return;
+    }
+    try {
+      cloudApi = await window.claude.use("artifact");
+    } catch (e) {
+      cloudApi = null;
+    }
+    cloudReady = true;
+    updateSyncBadge();
+  }
+
+  function updateSyncBadge() {
+    const badge = document.getElementById("syncBadge");
+    if (!badge) return;
+    if (cloudApi) {
+      badge.textContent = "☁ 雲端同步中";
+      badge.classList.add("on");
+    } else {
+      badge.textContent = "";
+      badge.classList.remove("on");
+    }
+  }
+
+  // 所有會改變資料的操作，最後都呼叫這個函式：
+  // 1) 先寫本機 localStorage（永遠成功，離線也能用）
+  // 2) 更新頁面內嵌的 app-state（讓「發布出去的這份文件」帶有最新資料）
+  // 3) 若有雲端 capability，把整份文件發布出去，其他裝置打開同一連結
+  //    就會看到最新資料。發布衝突是正常情況（例如兩台裝置差不多時間
+  //    各自存了一筆），不重試 —— 之後 Claude 平台會把畫面同步回最終版本。
+  async function saveState(s) {
+    s.updatedAt = Date.now();
+    persistLocal(s);
+    embedStateInDom(s);
+    if (cloudApi) {
+      try {
+        const html = "<!doctype html>\n" + document.documentElement.outerHTML;
+        await cloudApi.publish(html);
+      } catch (e) {
+        /* 衝突或離線：不重試，交給平台把畫面同步回最新版本 */
+      }
+    }
   }
 
   let state = loadState();
+  persistLocal(state);
+
+  /* ---------------- 每月固定繳費自動重置 ----------------
+     只在載入當下判斷、只更動本機資料；真正發布給雲端的動作
+     會等到使用者下一次實際操作（新增/刪除/勾選…）時才一併送出，
+     符合「只在使用者互動後才發布」的原則。 */
+  function maybeResetRecurring() {
+    const now = new Date();
+    const currentMonthKey = now.getFullYear() + "-" + (now.getMonth() + 1);
+    const resetDay = state.recurringResetDay || 1;
+    if (state.recurringLastResetMonth !== currentMonthKey && now.getDate() >= resetDay) {
+      state.recurring.forEach(r => (r.done = false));
+      state.recurringLastResetMonth = currentMonthKey;
+      persistLocal(state);
+    }
+  }
   maybeResetRecurring();
 
   /* ---------------- 共用工具 ---------------- */
@@ -109,18 +218,6 @@
       html += `</optgroup>`;
     }
     selectEl.innerHTML = html;
-  }
-
-  /* ---------------- 每月固定繳費自動重置 ---------------- */
-  function maybeResetRecurring() {
-    const now = new Date();
-    const currentMonthKey = now.getFullYear() + "-" + (now.getMonth() + 1);
-    const resetDay = state.recurringResetDay || 1;
-    if (state.recurringLastResetMonth !== currentMonthKey && now.getDate() >= resetDay) {
-      state.recurring.forEach(r => (r.done = false));
-      state.recurringLastResetMonth = currentMonthKey;
-      saveState(state);
-    }
   }
 
   /* ================= 首頁：快速記帳 ================= */
@@ -162,7 +259,6 @@
     };
     state.transactions.unshift(tx);
     applyPaymentDelta(paymentId, amount, +1);
-    saveState(state);
 
     itemInput.value = "";
     amountInput.value = "";
@@ -174,6 +270,8 @@
     renderChart();
     renderAccounts();
     renderCards();
+
+    saveState(state);
   });
 
   function showHint(msg) {
@@ -197,8 +295,8 @@
     const tx = state.transactions[idx];
     applyPaymentDelta(tx.paymentId, tx.amount, -1);
     state.transactions.splice(idx, 1);
-    saveState(state);
     renderHome(); renderChart(); renderAccounts(); renderCards();
+    saveState(state);
   }
 
   function monthTotalSpend(offset = 0) {
@@ -328,8 +426,8 @@
     list.querySelectorAll("[data-del-acc]").forEach(btn => {
       btn.addEventListener("click", () => {
         state.accounts = state.accounts.filter(a => a.id !== btn.getAttribute("data-del-acc"));
-        saveState(state);
         renderAccounts(); renderHome();
+        saveState(state);
       });
     });
 
@@ -347,7 +445,6 @@
       onSave: (v) => {
         if (!v.name) return;
         state.accounts.push({ id: uid(), name: v.name, balance: parseFloat(v.balance) || 0 });
-        saveState(state);
         renderAccounts(); renderHome();
       }
     });
@@ -395,8 +492,8 @@
     list.querySelectorAll("[data-del-card]").forEach(btn => {
       btn.addEventListener("click", () => {
         state.cards = state.cards.filter(c => c.id !== btn.getAttribute("data-del-card"));
-        saveState(state);
         renderCards(); renderHome();
+        saveState(state);
       });
     });
   }
@@ -419,7 +516,6 @@
           billingDay: Math.min(28, Math.max(1, parseInt(v.billingDay) || 20)),
           dueDay: Math.min(28, Math.max(1, parseInt(v.dueDay) || 5))
         });
-        saveState(state);
         renderCards(); renderHome();
       }
     });
@@ -454,15 +550,15 @@
       btn.addEventListener("click", () => {
         const r = state.recurring.find(x => x.id === btn.getAttribute("data-toggle"));
         r.done = !r.done;
-        saveState(state);
         renderRecurring();
+        saveState(state);
       });
     });
     list.querySelectorAll("[data-del-rec]").forEach(btn => {
       btn.addEventListener("click", () => {
         state.recurring = state.recurring.filter(r => r.id !== btn.getAttribute("data-del-rec"));
-        saveState(state);
         renderRecurring();
+        saveState(state);
       });
     });
   }
@@ -477,13 +573,14 @@
       onSave: (v) => {
         if (!v.name) return;
         state.recurring.push({ id: uid(), name: v.name, amount: parseFloat(v.amount) || 0, done: false });
-        saveState(state);
         renderRecurring();
       }
     });
   });
 
-  /* ================= 通用 Modal ================= */
+  /* ================= 通用 Modal =================
+     儲存動作統一放在「關閉 Modal 之後」才執行，確保發布出去的
+     文件快照裡，Modal 已經是關閉狀態（不會下次打開就看到彈窗）。 */
   const modalOverlay = document.getElementById("modalOverlay");
   const modalBody = document.getElementById("modalBody");
 
@@ -508,6 +605,7 @@
       });
       onSave(values);
       closeModal();
+      saveState(state);
     });
   }
 
@@ -553,8 +651,13 @@
   renderAccounts();
   renderCards();
   renderRecurring();
+  embedStateInDom(state);
 
-  /* ---------------- PWA：註冊 Service Worker（離線快取） ---------------- */
+  initCloud();
+
+  /* ---------------- PWA：註冊 Service Worker（離線快取） ----------------
+     只有一般網頁環境（例如 GitHub Pages）才有意義；Claude Artifact
+     環境沒有 sw.js 這個檔案可以註冊，失敗會被下面的 catch 靜默吸收。 */
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {
       navigator.serviceWorker.register("sw.js").catch(() => {
