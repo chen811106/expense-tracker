@@ -23,7 +23,8 @@
     { key: "會員費用",     color: "var(--c-member)",  keywords: ["訂閱","會員","netflix","spotify","健身房","月費","年費","disney","youtube"] },
     { key: "服飾",        color: "var(--c-clothes)", keywords: ["衣服","鞋子","包包","飾品","服飾","買衣","uniqlo","zara","gu","outlet","帽子","襪子"] },
     { key: "奢侈品",       color: "var(--c-luxury)",  keywords: ["精品","名牌","珠寶","手錶","lv","gucci","chanel","奢侈","名錶","限量"] },
-    { key: "投資",        color: "var(--c-invest)",  keywords: ["買股","股票","定期定額","etf","基金","加碼","進場","證券","期貨","入手股","買進"] }
+    { key: "投資",        color: "var(--c-invest)",  keywords: ["買股","股票","定期定額","etf","基金","加碼","進場","證券","期貨","入手股","買進"] },
+    { key: "調整",        color: "var(--c-adjust)",  keywords: ["調整","校正","更正","餘額調整","結餘調整","對帳","初始餘額","期初"] }
   ];
   // 這些是「內建」關鍵字，程式碼更新時會調整；使用者也可以在
   // 「分類關鍵字」設定裡自行新增專屬關鍵字（存在 state 裡、會跟著同步）。
@@ -45,7 +46,8 @@
     { key: "薪資收入", color: "var(--c-salary)",    keywords: ["薪水","薪資","月薪","工資","獎金","年終"] },
     { key: "生活費",   color: "var(--c-allowance)", keywords: ["生活費","家用","零用錢","孝親費"] },
     { key: "股利收入", color: "var(--c-dividend)",  keywords: ["股利","股息","配息","除權","除息"] },
-    { key: "投資",     color: "var(--c-invest)",    keywords: ["賣股","出場","賣出","股票","證券","期貨","獲利了結","出清"] }
+    { key: "投資",     color: "var(--c-invest)",    keywords: ["賣股","出場","賣出","股票","證券","期貨","獲利了結","出清"] },
+    { key: "調整",     color: "var(--c-adjust)",    keywords: ["調整","校正","更正","餘額調整","結餘調整","對帳","初始餘額","期初"] }
   ];
   const INCOME_CATEGORY_MAP = Object.fromEntries(INCOME_CATEGORIES.map(c => [c.key, c]));
   const INCOME_FALLBACK_CATEGORY = "其他收入";
