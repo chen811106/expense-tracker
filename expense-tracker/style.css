@@ -21,6 +21,13 @@
   --c-member: #ABA3B0;    /* 會員費用 - 灰紫 */
   --c-clothes: #D6C29C;   /* 服飾 - 燕麥金 */
   --c-luxury: #B98C7D;    /* 奢侈品 - 赤陶 */
+  --c-invest: #A2798A;    /* 投資（買賣股票）- 酒紅灰，收支通用同一色 */
+
+  /* 收入分類色 */
+  --c-salary: #8FA888;    /* 薪資收入 - 橄欖綠 */
+  --c-allowance: #A3B08A; /* 生活費 - 抹茶綠 */
+  --c-dividend: #B8AA6B;  /* 股利收入 - 燕麥金綠 */
+  --c-other-income: #9CADA0; /* 其他收入 - 灰綠 */
 
   /* 功能色 */
   --accent: #B98C7D;
@@ -149,13 +156,15 @@ body{
   flex-direction: column;
   gap: 6px;
 }
-.summary-item span{ font-size: 12px; color: var(--text-secondary); }
-.summary-item strong{ font-size: 20px; color: var(--text-primary); font-weight: 700; }
+.summary-item span{ font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
+.summary-item strong{ font-size: 16px; color: var(--text-primary); font-weight: 700; white-space: nowrap; }
+.summary-item.income strong{ color: var(--safe); }
 .summary-divider{
   width: 1px;
   height: 34px;
   background: var(--border);
-  margin: 0 16px;
+  margin: 0 10px;
+  flex-shrink: 0;
 }
 
 /* ---------- 表單 ---------- */
@@ -181,6 +190,31 @@ body{
 
 .row{ display: flex; gap: 12px; }
 .row .field{ flex: 1; }
+
+/* ---------- 支出／收入 切換 ---------- */
+.type-toggle{
+  display: flex;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: 3px;
+  margin-bottom: 6px;
+}
+.type-btn{
+  flex: 1;
+  border: none;
+  background: none;
+  padding: 8px 0;
+  border-radius: 100px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background .15s ease, color .15s ease;
+}
+.type-btn.active{ background: var(--accent); color: #fff; }
+.type-btn[data-type="income"].active{ background: var(--safe); }
 
 .category-preview{
   display: flex;
@@ -265,8 +299,9 @@ body{
   color: var(--text-primary);
   white-space: nowrap;
 }
+.item-amount.income{ color: var(--safe); }
 
-.item-delete{
+.item-delete, .item-edit{
   border: none;
   background: none;
   color: var(--text-faint);
@@ -276,6 +311,7 @@ body{
   line-height: 1;
 }
 .item-delete:hover{ color: var(--danger); }
+.item-edit:hover{ color: var(--accent); }
 
 .empty-hint{
   text-align: center;
@@ -437,29 +473,6 @@ body{
 .due-badge.warn{ background: rgba(211, 178, 106, 0.4); }
 
 /* ---------- 待辦清單 ---------- */
-.reset-setting{
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--text-secondary);
-  background: var(--surface);
-  padding: 8px 12px;
-  border-radius: var(--radius-sm);
-  margin-bottom: 12px;
-}
-.mini-number{
-  width: 46px;
-  text-align: center;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 4px 2px;
-  font-size: 12px;
-  font-family: inherit;
-  color: var(--text-primary);
-  background: var(--surface-soft);
-}
-
 .recurring-item{
   display: flex;
   align-items: center;
@@ -493,8 +506,10 @@ body{
 .recurring-main{ flex: 1; min-width: 0; }
 .recurring-name{ font-size: 14px; color: var(--text-primary); }
 .recurring-name.done{ text-decoration: line-through; color: var(--text-faint); }
+.recurring-sub{ font-size: 11px; color: var(--text-faint); margin-top: 2px; }
 .recurring-amount{ font-size: 13px; color: var(--text-secondary); font-weight: 600; white-space: nowrap; }
 .recurring-amount.done{ color: var(--text-faint); text-decoration: line-through; }
+.recurring-actions{ display: flex; align-items: center; gap: 2px; }
 
 /* ---------- 底部導覽 ---------- */
 .bottom-nav{
@@ -567,6 +582,37 @@ body{
 }
 .btn-cancel{ background: var(--surface-soft); color: var(--text-secondary); border: 1px solid var(--border) !important; }
 .btn-save{ background: var(--accent); color: #fff; }
+
+/* ---------- 分類關鍵字管理 ---------- */
+.chip-list{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.chip{
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: 5px 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.chip.default{ opacity: .7; }
+.chip button{
+  border: none;
+  background: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0;
+  line-height: 1;
+}
+.chip button:hover{ color: var(--danger); }
+.chip-empty{ font-size: 12px; color: var(--text-faint); margin-top: 6px; }
 
 @media (max-width: 460px){
   body{ padding: 0; }

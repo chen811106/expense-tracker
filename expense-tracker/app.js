@@ -14,16 +14,19 @@
 (function () {
   "use strict";
 
-  /* ---------------- 分類設定 ---------------- */
+  /* ---------------- 支出分類設定 ---------------- */
   const CATEGORIES = [
-    { key: "吃飯",        color: "var(--c-food)",    keywords: ["早餐","午餐","晚餐","消夜","宵夜","咖啡","飲料","便當","餐廳","小吃","火鍋","燒烤","飯","麵","吃","茶","星巴克","超商","熱炒","早午餐","甜點","蛋糕","滷味","食材","買菜","生鮮","菜市場","果菜","蔬菜","水果","海鮮","豬肉","雞肉","牛肉","市場"] },
+    { key: "吃飯",        color: "var(--c-food)",    keywords: ["早餐","午餐","晚餐","消夜","宵夜","咖啡","飲料","便當","餐廳","小吃","火鍋","燒烤","飯","麵","吃","茶","星巴克","超商","熱炒","早午餐","甜點","蛋糕","滷味","食材","買菜","生鮮","菜市場","果菜","蔬菜","水果","海鮮","豬肉","雞肉","牛肉","市場","肉","蛋","菜","優格","奇亞籽","食用油","橄欖油","沙拉油","苦茶油","麻油","堅果","牛奶","起司","豆腐","雞蛋"] },
     { key: "娛樂",        color: "var(--c-fun)",     keywords: ["電影","KTV","唱歌","展覽","演唱會","旅遊","酒吧","門票","樂園","遊戲","娛樂","景點","飯店","住宿","機票"] },
     { key: "生活用品",     color: "var(--c-daily)",   keywords: ["衛生紙","清潔","日用品","超市","全聯","家樂福","寶雅","洗髮精","牙膏","衛生棉","生活","雜貨","文具"] },
     { key: "油錢/停車費",  color: "var(--c-fuel)",    keywords: ["加油","停車","油錢","停車費","高速公路","ETC","過路費","機車保養","汽車保養","洗車"] },
     { key: "會員費用",     color: "var(--c-member)",  keywords: ["訂閱","會員","netflix","spotify","健身房","月費","年費","disney","youtube"] },
     { key: "服飾",        color: "var(--c-clothes)", keywords: ["衣服","鞋子","包包","飾品","服飾","買衣","uniqlo","zara","gu","outlet","帽子","襪子"] },
-    { key: "奢侈品",       color: "var(--c-luxury)",  keywords: ["精品","名牌","珠寶","手錶","lv","gucci","chanel","奢侈","名錶","限量"] }
+    { key: "奢侈品",       color: "var(--c-luxury)",  keywords: ["精品","名牌","珠寶","手錶","lv","gucci","chanel","奢侈","名錶","限量"] },
+    { key: "投資",        color: "var(--c-invest)",  keywords: ["買股","股票","定期定額","etf","基金","加碼","進場","證券","期貨","入手股","買進"] }
   ];
+  // 這些是「內建」關鍵字，程式碼更新時會調整；使用者也可以在
+  // 「分類關鍵字」設定裡自行新增專屬關鍵字（存在 state 裡、會跟著同步）。
   const CATEGORY_MAP = Object.fromEntries(CATEGORIES.map(c => [c.key, c]));
   const FALLBACK_CATEGORY = "生活用品";
 
@@ -31,18 +34,53 @@
     if (!text) return null;
     const t = text.toLowerCase();
     for (const cat of CATEGORIES) {
-      if (cat.keywords.some(k => t.includes(k.toLowerCase()))) return cat.key;
+      const custom = (state.categoryKeywords && state.categoryKeywords[cat.key]) || [];
+      if (cat.keywords.concat(custom).some(k => t.includes(k.toLowerCase()))) return cat.key;
     }
     return FALLBACK_CATEGORY;
+  }
+
+  /* ---------------- 收入分類設定 ---------------- */
+  const INCOME_CATEGORIES = [
+    { key: "薪資收入", color: "var(--c-salary)",    keywords: ["薪水","薪資","月薪","工資","獎金","年終"] },
+    { key: "生活費",   color: "var(--c-allowance)", keywords: ["生活費","家用","零用錢","孝親費"] },
+    { key: "股利收入", color: "var(--c-dividend)",  keywords: ["股利","股息","配息","除權","除息"] },
+    { key: "投資",     color: "var(--c-invest)",    keywords: ["賣股","出場","賣出","股票","證券","期貨","獲利了結","出清"] }
+  ];
+  const INCOME_CATEGORY_MAP = Object.fromEntries(INCOME_CATEGORIES.map(c => [c.key, c]));
+  const INCOME_FALLBACK_CATEGORY = "其他收入";
+  const INCOME_OTHER_COLOR = "var(--c-other-income)";
+
+  function categorizeIncome(text) {
+    if (!text) return null;
+    const t = text.toLowerCase();
+    for (const cat of INCOME_CATEGORIES) {
+      const custom = (state.incomeCategoryKeywords && state.incomeCategoryKeywords[cat.key]) || [];
+      if (cat.keywords.concat(custom).some(k => t.includes(k.toLowerCase()))) return cat.key;
+    }
+    return INCOME_FALLBACK_CATEGORY;
+  }
+
+  function categoryColor(category, type) {
+    if (type === "income") {
+      return (INCOME_CATEGORY_MAP[category] || {}).color || INCOME_OTHER_COLOR;
+    }
+    return (CATEGORY_MAP[category] || {}).color || "var(--text-faint)";
   }
 
   /* ---------------- 狀態 / 儲存 ---------------- */
   const STORAGE_KEY = "healing-ledger-v1";
 
+  function currentMonthKey(d) {
+    const now = d || new Date();
+    return now.getFullYear() + "-" + (now.getMonth() + 1);
+  }
+
   function seedState() {
     const now = new Date();
     const iso = (d) => d.toISOString().slice(0, 10);
     const thisMonth = (day) => iso(new Date(now.getFullYear(), now.getMonth(), day));
+    const mKey = currentMonthKey(now);
 
     return {
       updatedAt: Date.now(),
@@ -56,20 +94,19 @@
         { id: "c2", name: "台新 Richart 卡", unbilled: 1500, billingDay: 15, dueDay: 3 }
       ],
       recurring: [
-        { id: "r1", name: "房租", amount: 12000, done: false },
-        { id: "r2", name: "電費", amount: 1200, done: false },
-        { id: "r3", name: "網路費", amount: 799, done: true },
-        { id: "r4", name: "健身房會員", amount: 1000, done: false }
+        { id: "r1", name: "房租", amount: 12000, done: false, resetDay: 1, lastResetMonth: mKey },
+        { id: "r2", name: "電費", amount: 1200, done: false, resetDay: 10, lastResetMonth: mKey },
+        { id: "r3", name: "網路費", amount: 799, done: true, resetDay: 5, lastResetMonth: mKey },
+        { id: "r4", name: "健身房會員", amount: 1000, done: false, resetDay: 1, lastResetMonth: mKey }
       ],
-      recurringResetDay: 1,
-      recurringLastResetMonth: now.getFullYear() + "-" + (now.getMonth() + 1),
       transactions: [
-        { id: "t1", date: thisMonth(3),  item: "午餐便當",   amount: 120,  category: "吃飯",       paymentId: "cash" },
-        { id: "t2", date: thisMonth(5),  item: "全聯日用品", amount: 640,  category: "生活用品",   paymentId: "a1" },
-        { id: "t3", date: thisMonth(8),  item: "加油",       amount: 800,  category: "油錢/停車費", paymentId: "c1" },
-        { id: "t4", date: thisMonth(10), item: "看電影",     amount: 320,  category: "娛樂",       paymentId: "c1" },
-        { id: "t5", date: thisMonth(14), item: "Netflix 訂閱", amount: 390, category: "會員費用",  paymentId: "a2" },
-        { id: "t6", date: thisMonth(18), item: "UNIQLO 買衣", amount: 1290, category: "服飾",      paymentId: "c2" }
+        { id: "t1", type: "expense", date: thisMonth(3),  item: "午餐便當",   amount: 120,  category: "吃飯",       paymentId: "cash" },
+        { id: "t2", type: "expense", date: thisMonth(5),  item: "全聯日用品", amount: 640,  category: "生活用品",   paymentId: "a1" },
+        { id: "t3", type: "expense", date: thisMonth(8),  item: "加油",       amount: 800,  category: "油錢/停車費", paymentId: "c1" },
+        { id: "t4", type: "expense", date: thisMonth(10), item: "看電影",     amount: 320,  category: "娛樂",       paymentId: "c1" },
+        { id: "t5", type: "expense", date: thisMonth(14), item: "Netflix 訂閱", amount: 390, category: "會員費用",  paymentId: "a2" },
+        { id: "t6", type: "expense", date: thisMonth(18), item: "UNIQLO 買衣", amount: 1290, category: "服飾",      paymentId: "c2" },
+        { id: "t7", type: "income",  date: thisMonth(5),  item: "薪資入帳",   amount: 45000, category: "薪資收入",  paymentId: "a1" }
       ]
     };
   }
@@ -102,7 +139,33 @@
       chosen = embedded || local || seedState();
     }
     if (!chosen.updatedAt) chosen.updatedAt = Date.now();
+    migrateState(chosen);
     return chosen;
+  }
+
+  // 舊資料相容：固定繳費項目補上各自的重置日；交易紀錄補上 type；
+  // 每個分類補上使用者自訂關鍵字的儲存位置（只在缺少時建立空陣列，
+  // 絕不覆蓋使用者已經新增過的自訂關鍵字）
+  function migrateState(s) {
+    const mKey = currentMonthKey();
+    const legacyResetDay = s.recurringResetDay || 1;
+    (s.recurring || []).forEach(r => {
+      if (!r.resetDay) r.resetDay = legacyResetDay;
+      // 沒有重置紀錄的舊資料：視為「這個月已經處理過」，避免一更新程式碼
+      // 就把使用者已經勾選的項目重置掉
+      if (!r.lastResetMonth) r.lastResetMonth = s.recurringLastResetMonth || mKey;
+    });
+    (s.transactions || []).forEach(t => {
+      if (!t.type) t.type = "expense";
+    });
+    if (!s.categoryKeywords) s.categoryKeywords = {};
+    CATEGORIES.forEach(c => {
+      if (!Array.isArray(s.categoryKeywords[c.key])) s.categoryKeywords[c.key] = [];
+    });
+    if (!s.incomeCategoryKeywords) s.incomeCategoryKeywords = {};
+    INCOME_CATEGORIES.forEach(c => {
+      if (!Array.isArray(s.incomeCategoryKeywords[c.key])) s.incomeCategoryKeywords[c.key] = [];
+    });
   }
 
   function persistLocal(s) {
@@ -123,12 +186,9 @@
   // Claude Artifact 的 `artifact` capability：可用時，儲存動作會把整份
   // 頁面連同最新資料一起發布，所有打開同一連結的裝置都會同步到這份。
   let cloudApi = null;
-  let cloudReady = false;
 
   async function initCloud() {
     if (typeof window.claude === "undefined" || typeof window.claude.use !== "function") {
-      cloudReady = true;
-      updateSyncBadge();
       return;
     }
     try {
@@ -136,7 +196,6 @@
     } catch (e) {
       cloudApi = null;
     }
-    cloudReady = true;
     updateSyncBadge();
   }
 
@@ -175,19 +234,22 @@
   let state = loadState();
   persistLocal(state);
 
-  /* ---------------- 每月固定繳費自動重置 ----------------
+  /* ---------------- 每筆固定繳費各自的每月自動重置 ----------------
      只在載入當下判斷、只更動本機資料；真正發布給雲端的動作
      會等到使用者下一次實際操作（新增/刪除/勾選…）時才一併送出，
      符合「只在使用者互動後才發布」的原則。 */
   function maybeResetRecurring() {
     const now = new Date();
-    const currentMonthKey = now.getFullYear() + "-" + (now.getMonth() + 1);
-    const resetDay = state.recurringResetDay || 1;
-    if (state.recurringLastResetMonth !== currentMonthKey && now.getDate() >= resetDay) {
-      state.recurring.forEach(r => (r.done = false));
-      state.recurringLastResetMonth = currentMonthKey;
-      persistLocal(state);
-    }
+    const mKey = currentMonthKey(now);
+    let changed = false;
+    state.recurring.forEach(r => {
+      if (r.lastResetMonth !== mKey && now.getDate() >= r.resetDay) {
+        r.done = false;
+        r.lastResetMonth = mKey;
+        changed = true;
+      }
+    });
+    if (changed) persistLocal(state);
   }
   maybeResetRecurring();
 
@@ -205,34 +267,65 @@
     return "未知帳戶";
   }
 
-  function renderPaymentOptions(selectEl) {
+  // 收入不能存進信用卡，所以 excludeCards 會把信用卡選項拿掉
+  function renderPaymentOptions(selectEl, opts) {
+    const excludeCards = opts && opts.excludeCards;
     let html = `<option value="cash">現金</option>`;
     if (state.accounts.length) {
       html += `<optgroup label="銀行帳戶">`;
       html += state.accounts.map(a => `<option value="${a.id}">${a.name}</option>`).join("");
       html += `</optgroup>`;
     }
-    if (state.cards.length) {
+    if (!excludeCards && state.cards.length) {
       html += `<optgroup label="信用卡">`;
       html += state.cards.map(c => `<option value="${c.id}">${c.name}</option>`).join("");
       html += `</optgroup>`;
     }
+    const prevValue = selectEl.value;
     selectEl.innerHTML = html;
+    if ([...selectEl.options].some(o => o.value === prevValue)) selectEl.value = prevValue;
   }
 
   /* ================= 首頁：快速記帳 ================= */
   const itemInput = document.getElementById("itemInput");
   const amountInput = document.getElementById("amountInput");
   const paymentSelect = document.getElementById("paymentSelect");
+  const paymentLabelEl = document.getElementById("paymentLabel");
+  const itemLabelEl = document.getElementById("itemLabel");
   const catDot = document.getElementById("catDot");
   const catLabel = document.getElementById("catLabel");
   const addBtn = document.getElementById("addBtn");
   const formHint = document.getElementById("formHint");
+  const typeToggle = document.getElementById("typeToggle");
 
-  itemInput.addEventListener("input", () => {
-    const guess = categorize(itemInput.value.trim());
+  let entryType = "expense"; // 'expense' | 'income'
+
+  typeToggle.addEventListener("click", (e) => {
+    const btn = e.target.closest(".type-btn");
+    if (!btn) return;
+    entryType = btn.getAttribute("data-type");
+    typeToggle.querySelectorAll(".type-btn").forEach(b => b.classList.toggle("active", b === btn));
+
+    if (entryType === "income") {
+      itemLabelEl.textContent = "收入項目";
+      itemInput.placeholder = "例如：薪資入帳、股利、生活費";
+      paymentLabelEl.textContent = "存入帳戶";
+      addBtn.textContent = "新增收入";
+    } else {
+      itemLabelEl.textContent = "花費項目";
+      itemInput.placeholder = "例如：星巴克拿鐵、加油、房租";
+      paymentLabelEl.textContent = "支付方式";
+      addBtn.textContent = "新增紀錄";
+    }
+    renderPaymentOptions(paymentSelect, { excludeCards: entryType === "income" });
+    updateCategoryPreview();
+  });
+
+  function updateCategoryPreview() {
+    const text = itemInput.value.trim();
+    const guess = entryType === "income" ? categorizeIncome(text) : categorize(text);
     if (guess) {
-      catDot.style.background = CATEGORY_MAP[guess].color;
+      catDot.style.background = categoryColor(guess, entryType);
       catLabel.textContent = `自動分類為「${guess}」`;
       catLabel.style.color = "var(--text-primary)";
     } else {
@@ -240,25 +333,30 @@
       catLabel.textContent = "輸入後將自動判斷分類";
       catLabel.style.color = "var(--text-secondary)";
     }
-  });
+  }
+
+  itemInput.addEventListener("input", updateCategoryPreview);
 
   addBtn.addEventListener("click", () => {
     const item = itemInput.value.trim();
     const amount = parseFloat(amountInput.value);
     const paymentId = paymentSelect.value;
 
-    if (!item) { showHint("請輸入花費項目"); return; }
+    if (!item) { showHint(entryType === "income" ? "請輸入收入項目" : "請輸入花費項目"); return; }
     if (!amount || amount <= 0) { showHint("請輸入有效金額"); return; }
 
-    const category = categorize(item);
+    const category = entryType === "income" ? categorizeIncome(item) : categorize(item);
 
     const tx = {
       id: uid(),
+      type: entryType,
       date: new Date().toISOString().slice(0, 10),
       item, amount, category, paymentId
     };
     state.transactions.unshift(tx);
-    applyPaymentDelta(paymentId, amount, +1);
+    // 支出：sign +1（帳戶減少／卡片未出帳增加）。收入：sign -1，剛好是同一個
+    // 函式反過來的效果（帳戶增加），現金則兩種情況都不影響任何帳戶。
+    applyPaymentDelta(paymentId, amount, entryType === "expense" ? +1 : -1);
 
     itemInput.value = "";
     amountInput.value = "";
@@ -281,7 +379,8 @@
   }
 
   function applyPaymentDelta(paymentId, amount, sign) {
-    // sign +1 = 消費發生（帳戶減少 / 卡片未出帳增加）；-1 = 刪除紀錄時還原
+    // sign +1 = 支出效果（帳戶減少 / 卡片未出帳增加）；sign -1 = 收入效果
+    // （帳戶增加）或刪除一筆支出時的還原。現金不影響任何帳戶。
     if (paymentId === "cash") return;
     const acc = state.accounts.find(a => a.id === paymentId);
     if (acc) { acc.balance -= amount * sign; return; }
@@ -293,46 +392,52 @@
     const idx = state.transactions.findIndex(t => t.id === id);
     if (idx === -1) return;
     const tx = state.transactions[idx];
-    applyPaymentDelta(tx.paymentId, tx.amount, -1);
+    applyPaymentDelta(tx.paymentId, tx.amount, tx.type === "income" ? +1 : -1);
     state.transactions.splice(idx, 1);
     renderHome(); renderChart(); renderAccounts(); renderCards();
     saveState(state);
   }
 
-  function monthTotalSpend(offset = 0) {
+  function monthTransactions(offset, type) {
     const now = new Date();
     const target = new Date(now.getFullYear(), now.getMonth() + offset, 1);
     const y = target.getFullYear(), m = target.getMonth();
     return state.transactions.filter(t => {
+      if (type && (t.type || "expense") !== type) return false;
       const d = new Date(t.date);
       return d.getFullYear() === y && d.getMonth() === m;
     });
   }
+  const monthTotalSpend = (offset = 0) => monthTransactions(offset, "expense");
+  const monthTotalIncome = (offset = 0) => monthTransactions(offset, "income");
 
   function renderHome() {
-    const thisMonthTx = monthTotalSpend(0);
-    const total = thisMonthTx.reduce((s, t) => s + t.amount, 0);
-    document.getElementById("monthTotal").textContent = money(total);
+    const spendTotal = monthTotalSpend(0).reduce((s, t) => s + t.amount, 0);
+    document.getElementById("monthTotal").textContent = money(spendTotal);
+
+    const incomeTotal = monthTotalIncome(0).reduce((s, t) => s + t.amount, 0);
+    document.getElementById("monthIncome").textContent = money(incomeTotal);
 
     const accTotal = state.accounts.reduce((s, a) => s + a.balance, 0);
     document.getElementById("totalBalance").textContent = money(accTotal);
 
-    renderPaymentOptions(paymentSelect);
+    renderPaymentOptions(paymentSelect, { excludeCards: entryType === "income" });
 
     const list = document.getElementById("recentList");
     const empty = document.getElementById("recentEmpty");
     const recent = state.transactions.slice(0, 8);
     empty.style.display = recent.length ? "none" : "block";
     list.innerHTML = recent.map(t => {
-      const cat = CATEGORY_MAP[t.category] || { color: "var(--text-faint)" };
+      const color = categoryColor(t.category, t.type);
+      const isIncome = t.type === "income";
       return `
         <li class="list-item">
-          <span class="item-dot" style="background:${cat.color}"></span>
+          <span class="item-dot" style="background:${color}"></span>
           <div class="item-main">
             <div class="item-title">${escapeHtml(t.item)}</div>
             <div class="item-sub">${t.date} · ${t.category} · ${paymentLabel(t.paymentId)}</div>
           </div>
-          <div class="item-amount">-${money(t.amount)}</div>
+          <div class="item-amount${isIncome ? " income" : ""}">${isIncome ? "+" : "-"}${money(t.amount)}</div>
           <button class="item-delete" data-del="${t.id}" aria-label="刪除">✕</button>
         </li>`;
     }).join("");
@@ -346,7 +451,7 @@
     return s.replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
   }
 
-  /* ================= 圖表 ================= */
+  /* ================= 圖表（僅統計支出） ================= */
   let chartMonthOffset = 0;
 
   document.getElementById("prevMonth").addEventListener("click", () => { chartMonthOffset--; renderChart(); });
@@ -521,16 +626,7 @@
     });
   });
 
-  /* ================= 週期性繳費 ================= */
-  const resetDayInput = document.getElementById("resetDayInput");
-  resetDayInput.value = state.recurringResetDay;
-  resetDayInput.addEventListener("change", () => {
-    const v = Math.min(28, Math.max(1, parseInt(resetDayInput.value) || 1));
-    state.recurringResetDay = v;
-    resetDayInput.value = v;
-    saveState(state);
-  });
-
+  /* ================= 週期性繳費（每筆各自設定重置日） ================= */
   function renderRecurring() {
     const list = document.getElementById("recurringList");
     const empty = document.getElementById("recurringEmpty");
@@ -541,9 +637,13 @@
         <button class="checkbox ${r.done ? "checked" : ""}" data-toggle="${r.id}" aria-label="標記完成">${r.done ? "✓" : ""}</button>
         <div class="recurring-main">
           <div class="recurring-name ${r.done ? "done" : ""}">${escapeHtml(r.name)}</div>
+          <div class="recurring-sub">每月 ${r.resetDay} 號重置為未繳納</div>
         </div>
         <div class="recurring-amount ${r.done ? "done" : ""}">${money(r.amount)}</div>
-        <button class="item-delete" data-del-rec="${r.id}" aria-label="刪除">✕</button>
+        <div class="recurring-actions">
+          <button class="item-edit" data-edit-rec="${r.id}" aria-label="編輯">✎</button>
+          <button class="item-delete" data-del-rec="${r.id}" aria-label="刪除">✕</button>
+        </div>
       </li>`).join("");
 
     list.querySelectorAll("[data-toggle]").forEach(btn => {
@@ -561,22 +661,46 @@
         saveState(state);
       });
     });
+    list.querySelectorAll("[data-edit-rec]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const r = state.recurring.find(x => x.id === btn.getAttribute("data-edit-rec"));
+        if (r) openRecurringModal(r);
+      });
+    });
   }
 
-  document.getElementById("addRecurringBtn").addEventListener("click", () => {
+  function openRecurringModal(existing) {
     openModal({
-      title: "新增固定繳費項目",
+      title: existing ? "編輯固定繳費項目" : "新增固定繳費項目",
       fields: [
         { key: "name", label: "項目名稱", type: "text", placeholder: "例如：房租、水電費" },
-        { key: "amount", label: "金額", type: "number", placeholder: "0" }
+        { key: "amount", label: "金額", type: "number", placeholder: "0" },
+        { key: "resetDay", label: "每月幾號自動重置為未繳納", type: "number", placeholder: "1" }
       ],
+      initial: existing ? { name: existing.name, amount: existing.amount, resetDay: existing.resetDay } : null,
       onSave: (v) => {
         if (!v.name) return;
-        state.recurring.push({ id: uid(), name: v.name, amount: parseFloat(v.amount) || 0, done: false });
+        const resetDay = Math.min(28, Math.max(1, parseInt(v.resetDay) || 1));
+        if (existing) {
+          existing.name = v.name;
+          existing.amount = parseFloat(v.amount) || 0;
+          existing.resetDay = resetDay;
+        } else {
+          state.recurring.push({
+            id: uid(),
+            name: v.name,
+            amount: parseFloat(v.amount) || 0,
+            done: false,
+            resetDay,
+            lastResetMonth: currentMonthKey()
+          });
+        }
         renderRecurring();
       }
     });
-  });
+  }
+
+  document.getElementById("addRecurringBtn").addEventListener("click", () => openRecurringModal(null));
 
   /* ================= 通用 Modal =================
      儲存動作統一放在「關閉 Modal 之後」才執行，確保發布出去的
@@ -584,12 +708,12 @@
   const modalOverlay = document.getElementById("modalOverlay");
   const modalBody = document.getElementById("modalBody");
 
-  function openModal({ title, fields, onSave }) {
+  function openModal({ title, fields, onSave, initial }) {
     modalBody.innerHTML = `
       <h3>${title}</h3>
       ${fields.map(f => `
         <label class="field-label">${f.label}</label>
-        <input class="text-input" type="${f.type}" placeholder="${f.placeholder || ""}" data-field="${f.key}">
+        <input class="text-input" type="${f.type}" placeholder="${f.placeholder || ""}" data-field="${f.key}" value="${initial && initial[f.key] !== undefined ? escapeAttr(String(initial[f.key])) : ""}">
       `).join("")}
       <div class="modal-actions">
         <button class="btn-cancel" id="modalCancel">取消</button>
@@ -609,6 +733,10 @@
     });
   }
 
+  function escapeAttr(s) {
+    return s.replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+  }
+
   function closeModal() {
     modalOverlay.classList.remove("open");
     modalBody.innerHTML = "";
@@ -617,6 +745,108 @@
   modalOverlay.addEventListener("click", (e) => {
     if (e.target === modalOverlay) closeModal();
   });
+
+  /* ================= 分類關鍵字管理 =================
+     系統預設關鍵字（CATEGORIES / INCOME_CATEGORIES 裡寫死的）只顯示、
+     不能刪；使用者可以另外新增自己的關鍵字，存在 state 裡、會跟著
+     雲端同步，之後遇到判斷不準的情況自己就能修正，不用再等改程式碼。 */
+  document.getElementById("manageCategoriesBtn").addEventListener("click", openCategoryManager);
+
+  function openCategoryManager() {
+    let kwType = "expense";
+
+    modalBody.innerHTML = `
+      <h3>管理分類關鍵字</h3>
+      <div class="type-toggle" id="kwType">
+        <button type="button" class="type-btn active" data-type="expense">支出分類</button>
+        <button type="button" class="type-btn" data-type="income">收入分類</button>
+      </div>
+      <label class="field-label">選擇分類</label>
+      <select id="kwCategorySelect" class="text-input"></select>
+      <div class="field-label" style="margin-top:14px;">系統預設關鍵字</div>
+      <div class="chip-list" id="kwDefaultChips"></div>
+      <div class="field-label" style="margin-top:14px;">我新增的關鍵字</div>
+      <div class="chip-list" id="kwCustomChips"></div>
+      <div class="row" style="margin-top:10px;">
+        <input id="kwNewInput" class="text-input" placeholder="輸入新關鍵字，例如：青菜">
+        <button class="add-mini" id="kwAddBtn" style="white-space:nowrap;">新增</button>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-save" id="kwDone" style="flex:1;">完成</button>
+      </div>`;
+    modalOverlay.classList.add("open");
+
+    const kwTypeToggle = modalBody.querySelector("#kwType");
+    const categorySelect = modalBody.querySelector("#kwCategorySelect");
+    const defaultChipsEl = modalBody.querySelector("#kwDefaultChips");
+    const customChipsEl = modalBody.querySelector("#kwCustomChips");
+    const newInput = modalBody.querySelector("#kwNewInput");
+
+    function categoryList() {
+      return kwType === "income" ? INCOME_CATEGORIES : CATEGORIES;
+    }
+    function customStore() {
+      return kwType === "income" ? state.incomeCategoryKeywords : state.categoryKeywords;
+    }
+
+    function renderCategorySelect() {
+      categorySelect.innerHTML = categoryList().map(c => `<option value="${c.key}">${c.key}</option>`).join("");
+    }
+
+    function renderChips() {
+      const key = categorySelect.value;
+      const cat = categoryList().find(c => c.key === key);
+      defaultChipsEl.innerHTML = (cat ? cat.keywords : [])
+        .map(k => `<span class="chip default">${escapeHtml(k)}</span>`).join("")
+        || `<span class="chip-empty">（無）</span>`;
+
+      const custom = (customStore()[key] || []);
+      customChipsEl.innerHTML = custom.length
+        ? custom.map(k => `<span class="chip">${escapeHtml(k)}<button data-remove-kw="${escapeAttr(k)}">✕</button></span>`).join("")
+        : `<span class="chip-empty">還沒有新增自訂關鍵字</span>`;
+
+      customChipsEl.querySelectorAll("[data-remove-kw]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const kw = btn.getAttribute("data-remove-kw");
+          customStore()[key] = (customStore()[key] || []).filter(k => k !== kw);
+          renderChips();
+          saveState(state);
+        });
+      });
+    }
+
+    kwTypeToggle.addEventListener("click", (e) => {
+      const btn = e.target.closest(".type-btn");
+      if (!btn) return;
+      kwType = btn.getAttribute("data-type");
+      kwTypeToggle.querySelectorAll(".type-btn").forEach(b => b.classList.toggle("active", b === btn));
+      renderCategorySelect();
+      renderChips();
+    });
+
+    categorySelect.addEventListener("change", renderChips);
+
+    modalBody.querySelector("#kwAddBtn").addEventListener("click", () => {
+      const kw = newInput.value.trim();
+      if (!kw) return;
+      const key = categorySelect.value;
+      const store = customStore();
+      if (!store[key]) store[key] = [];
+      if (!store[key].includes(kw)) store[key].push(kw);
+      newInput.value = "";
+      renderChips();
+      saveState(state);
+    });
+
+    newInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); modalBody.querySelector("#kwAddBtn").click(); }
+    });
+
+    modalBody.querySelector("#kwDone").addEventListener("click", closeModal);
+
+    renderCategorySelect();
+    renderChips();
+  }
 
   /* ================= 分頁切換 ================= */
   document.querySelectorAll(".nav-btn").forEach(btn => {
@@ -645,7 +875,7 @@
   }
 
   initDate();
-  renderPaymentOptions(paymentSelect);
+  renderPaymentOptions(paymentSelect, { excludeCards: entryType === "income" });
   renderHome();
   renderChart();
   renderAccounts();

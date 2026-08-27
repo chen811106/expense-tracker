@@ -45,6 +45,11 @@
           <strong id="monthTotal">$0</strong>
         </div>
         <div class="summary-divider"></div>
+        <div class="summary-item income">
+          <span>本月收入</span>
+          <strong id="monthIncome">$0</strong>
+        </div>
+        <div class="summary-divider"></div>
         <div class="summary-item">
           <span>帳戶總餘額</span>
           <strong id="totalBalance">$0</strong>
@@ -52,9 +57,17 @@
       </div>
 
       <div class="card add-expense">
-        <h2>快速記一筆</h2>
+        <div class="section-head">
+          <h2>快速記一筆</h2>
+          <button class="add-mini" id="manageCategoriesBtn">⚙ 分類關鍵字</button>
+        </div>
 
-        <label class="field-label">花費項目</label>
+        <div class="type-toggle" id="typeToggle">
+          <button type="button" class="type-btn active" data-type="expense">支出</button>
+          <button type="button" class="type-btn" data-type="income">收入</button>
+        </div>
+
+        <label class="field-label" id="itemLabel">花費項目</label>
         <input id="itemInput" class="text-input" placeholder="例如：星巴克拿鐵、加油、房租" autocomplete="off">
 
         <div class="category-preview" id="categoryPreview">
@@ -68,7 +81,7 @@
             <input id="amountInput" class="text-input" type="number" min="0" placeholder="0">
           </div>
           <div class="field">
-            <label class="field-label">支付方式</label>
+            <label class="field-label" id="paymentLabel">支付方式</label>
             <select id="paymentSelect" class="text-input"></select>
           </div>
         </div>
@@ -146,11 +159,7 @@
           <button class="add-mini" id="addRecurringBtn">+ 新增項目</button>
         </div>
 
-        <div class="reset-setting">
-          每月
-          <input type="number" id="resetDayInput" min="1" max="28" class="mini-number">
-          號自動重置為未繳納
-        </div>
+        <p class="hint-text">每一筆都可以自訂「每月幾號」自動重置為未繳納，繳款截止日不同就設不同天數即可。</p>
 
         <ul id="recurringList" class="plain-list"></ul>
         <p class="empty-hint" id="recurringEmpty">還沒有固定繳費項目</p>
