@@ -61,7 +61,7 @@ body{
 .phone{
   width: 100%;
   max-width: 420px;
-  height: 780px;
+  min-height: 780px; /* 安全預設值：絕不硬砍內容，避免在未知的外層容器裡把畫面剪掉 */
   background: var(--surface);
   border-radius: 36px;
   box-shadow: var(--shadow-soft);
@@ -71,6 +71,11 @@ body{
   overflow: hidden;
   position: relative;
 }
+/* 只有獨立開啟（桌面預覽）時才鎖固定高度，讓 .content 內部捲動、
+   底部導覽列固定；被包在別的頁面裡開啟時維持安全預設值，避免跟外層
+   容器的量測邏輯打架。 min-height:0 是為了蓋掉上面的安全預設值，
+   不然兩個高度規則衝突時，數字比較大的 min-height 會贏，鎖定就失效。 */
+html:not(.claude-embedded) .phone{ height: 780px; min-height: 0; }
 
 /* ---------- 頂部列 ---------- */
 .topbar{
@@ -649,9 +654,15 @@ body{
 .chip-empty{ font-size: 12px; color: var(--text-faint); margin-top: 6px; }
 
 @media (max-width: 460px){
-  /* 鎖死頁面本身的高度，讓底部導覽列永遠貼在畫面最下面，
-     捲動只發生在 .content 內部（像原生 App 一樣），
-     而不是整個畫面往下捲才看得到分頁按鈕。 */
-  body{ padding: 0; height: 100vh; height: 100dvh; overflow: hidden; }
-  .phone{ border-radius: 0; height: 100vh; height: 100dvh; max-width: 100%; }
+  body{ padding: 0; }
+  .phone{ border-radius: 0; max-width: 100%; }
+
+  /* 鎖死頁面本身的高度，讓底部導覽列永遠貼在畫面最下面，捲動只發生在
+     .content 內部（像原生 App 一樣）——但只在頁面是「獨立開啟」時套用
+     （GitHub Pages、加入主畫面的 PWA、直接開檔案）。如果是被包在別的
+     頁面裡開啟（例如 Claude Artifact 檢視器），外層容器通常會自動撐高
+     去配合內容，vh/dvh 鎖定反而會跟外層的量測互相打架，把底部導覽列
+     推到看不到、點不到的地方，所以那種情況維持原本「整頁一起捲動」。 */
+  html:not(.claude-embedded) body{ height: 100vh; height: 100dvh; overflow: hidden; }
+  html:not(.claude-embedded) .phone{ height: 100vh; height: 100dvh; min-height: 0; }
 }
