@@ -273,13 +273,35 @@
     s.updatedAt = Date.now();
     persistLocal(s);
     embedStateInDom(s);
-    if (cloudApi) {
-      try {
-        const html = "<!doctype html>\n" + document.documentElement.outerHTML;
-        await cloudApi.publish(html);
-      } catch (e) {
-        /* 衝突或離線：不重試，交給平台把畫面同步回最新版本 */
+    if (!cloudApi) return;
+
+    // document.documentElement.outerHTML 要把整份頁面（含所有交易紀錄）
+    // 同步序列化成字串，資料越多這件事越不是瞬間完成——如果緊接著使用者
+    // 剛做完的操作就同步做，畫面剛更新完的那一瞬間容易感覺頓一下。用
+    // setTimeout 讓瀏覽器先把剛剛的畫面變化畫出來，序列化跟真正發布到
+    // 雲端的動作延到下一個 tick 再做。
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // 發布是非同步的，跟使用者接下來的操作（例如切換到下一個欄位打字）
+    // 有可能重疊；平台同步完成、重新套用畫面時，正在輸入的欄位或原本
+    // 停留的捲動位置可能被打斷、跳掉。記住發布前 focus 在哪個欄位、
+    // 捲到哪裡，發布結束後主動拉回來，避免「畫面突然被拉走」的感覺。
+    const activeId = document.activeElement && document.activeElement.id;
+    const contentEl = document.querySelector(".content");
+    const scrollTop = contentEl ? contentEl.scrollTop : 0;
+
+    try {
+      const html = "<!doctype html>\n" + document.documentElement.outerHTML;
+      await cloudApi.publish(html);
+    } catch (e) {
+      /* 衝突或離線：不重試，交給平台把畫面同步回最新版本 */
+    } finally {
+      if (activeId) {
+        const el = document.getElementById(activeId);
+        if (el && document.activeElement !== el) el.focus({ preventScroll: true });
       }
+      const contentElAfter = document.querySelector(".content");
+      if (contentElAfter) contentElAfter.scrollTop = scrollTop;
     }
   }
 
@@ -443,6 +465,12 @@
     catDot.style.background = "var(--text-faint)";
     catLabel.textContent = "輸入後將自動判斷分類";
     showHint(`已記錄「${item}」，歸類於${category} ✓`);
+    // 新增完主動收起鍵盤：不然如果原本是從「金額」欄位按下鍵盤上的
+    // 送出鍵觸發，欄位清空後 focus 還留在原地、鍵盤沒關，之後畫面
+    // 重新排版（例如鍵盤自己決定要不要收起來）時機不固定，會有種
+    // 「畫面自己跳走」的感覺。這裡直接、確定地收起鍵盤。
+    itemInput.blur();
+    amountInput.blur();
 
     renderHome();
     renderChart();

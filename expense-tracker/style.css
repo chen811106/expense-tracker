@@ -197,7 +197,11 @@ body{
   background: var(--surface);
   border-radius: var(--radius-sm);
   padding: 11px 13px;
-  font-size: 14px;
+  /* 16px 是關鍵：iOS Safari 只要輸入框的字級小於 16px，點下去就會自動
+     放大整個畫面（想幫你看清楚打了什麼），點掉鍵盤後那個放大不會自己
+     完全復原，要再點兩下才會縮回正常大小。字級只要 >=16px，Safari
+     就不會觸發這個自動縮放，從根本避免掉，不用事後補救。 */
+  font-size: 16px;
   color: var(--text-primary);
   outline: none;
   transition: border-color .15s ease;
