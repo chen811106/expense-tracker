@@ -398,6 +398,24 @@
     saveState(state);
   }
 
+  // 所有刪除動作的防呆確認視窗：傳入要顯示的說明文字，以及按下「刪除」
+  // 後真正執行的動作。取消或點背景都不會刪除任何東西。
+  function confirmDelete(message, onConfirm) {
+    modalBody.innerHTML = `
+      <h3>確定要刪除嗎？</h3>
+      <p class="confirm-message">${message}</p>
+      <div class="modal-actions">
+        <button class="btn-cancel" id="confirmCancelBtn">取消</button>
+        <button class="btn-danger" id="confirmDeleteBtn">刪除</button>
+      </div>`;
+    modalOverlay.classList.add("open");
+    modalBody.querySelector("#confirmCancelBtn").addEventListener("click", closeModal);
+    modalBody.querySelector("#confirmDeleteBtn").addEventListener("click", () => {
+      closeModal();
+      onConfirm();
+    });
+  }
+
   function monthTransactions(offset, type) {
     const now = new Date();
     const target = new Date(now.getFullYear(), now.getMonth() + offset, 1);
@@ -443,7 +461,12 @@
     }).join("");
 
     list.querySelectorAll("[data-del]").forEach(btn => {
-      btn.addEventListener("click", () => deleteTransaction(btn.getAttribute("data-del")));
+      btn.addEventListener("click", () => {
+        const id = btn.getAttribute("data-del");
+        const tx = state.transactions.find(t => t.id === id);
+        if (!tx) return;
+        confirmDelete(`「${escapeHtml(tx.item)}」${tx.type === "income" ? "+" : "-"}${money(tx.amount)} 這筆紀錄刪除後無法復原。`, () => deleteTransaction(id));
+      });
     });
   }
 
@@ -530,9 +553,14 @@
 
     list.querySelectorAll("[data-del-acc]").forEach(btn => {
       btn.addEventListener("click", () => {
-        state.accounts = state.accounts.filter(a => a.id !== btn.getAttribute("data-del-acc"));
-        renderAccounts(); renderHome();
-        saveState(state);
+        const id = btn.getAttribute("data-del-acc");
+        const acc = state.accounts.find(a => a.id === id);
+        if (!acc) return;
+        confirmDelete(`帳戶「${escapeHtml(acc.name)}」（餘額 ${money(acc.balance)}）刪除後無法復原，過去用這個帳戶記的紀錄不會被刪除，但會顯示為未知帳戶。`, () => {
+          state.accounts = state.accounts.filter(a => a.id !== id);
+          renderAccounts(); renderHome();
+          saveState(state);
+        });
       });
     });
 
@@ -596,9 +624,14 @@
 
     list.querySelectorAll("[data-del-card]").forEach(btn => {
       btn.addEventListener("click", () => {
-        state.cards = state.cards.filter(c => c.id !== btn.getAttribute("data-del-card"));
-        renderCards(); renderHome();
-        saveState(state);
+        const id = btn.getAttribute("data-del-card");
+        const card = state.cards.find(c => c.id === id);
+        if (!card) return;
+        confirmDelete(`信用卡「${escapeHtml(card.name)}」（本期未出帳 ${money(card.unbilled)}）刪除後無法復原。`, () => {
+          state.cards = state.cards.filter(c => c.id !== id);
+          renderCards(); renderHome();
+          saveState(state);
+        });
       });
     });
   }
@@ -656,9 +689,14 @@
     });
     list.querySelectorAll("[data-del-rec]").forEach(btn => {
       btn.addEventListener("click", () => {
-        state.recurring = state.recurring.filter(r => r.id !== btn.getAttribute("data-del-rec"));
-        renderRecurring();
-        saveState(state);
+        const id = btn.getAttribute("data-del-rec");
+        const r = state.recurring.find(x => x.id === id);
+        if (!r) return;
+        confirmDelete(`固定繳費項目「${escapeHtml(r.name)}」（${money(r.amount)}）刪除後無法復原。`, () => {
+          state.recurring = state.recurring.filter(x => x.id !== id);
+          renderRecurring();
+          saveState(state);
+        });
       });
     });
     list.querySelectorAll("[data-edit-rec]").forEach(btn => {

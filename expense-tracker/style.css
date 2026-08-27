@@ -582,6 +582,13 @@ body{
 }
 .btn-cancel{ background: var(--surface-soft); color: var(--text-secondary); border: 1px solid var(--border) !important; }
 .btn-save{ background: var(--accent); color: #fff; }
+.btn-danger{ background: var(--danger); color: #fff; }
+.confirm-message{
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 4px 2px 0;
+}
 
 /* ---------- 分類關鍵字管理 ---------- */
 .chip-list{
