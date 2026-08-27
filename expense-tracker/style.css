@@ -515,6 +515,23 @@ body{
 .due-badge.warn .due-dot{ background: #FFF1C7; }
 .due-badge.warn{ background: rgba(211, 178, 106, 0.4); }
 
+.credit-card-pay-btn{
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  padding: 9px;
+  border: none;
+  border-radius: 100px;
+  background: rgba(255,255,255,0.92);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+.credit-card-pay-btn:hover{ opacity: .85; }
+.credit-card-pay-btn:active{ transform: scale(0.98); }
+
 /* ---------- 待辦清單 ---------- */
 .recurring-item{
   display: flex;

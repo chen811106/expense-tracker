@@ -418,12 +418,24 @@
     if (toAcc) toAcc.balance += amount * sign;
   }
 
+  // 信用卡繳款：sign +1 = 執行繳款（付款帳戶／現金減少、該卡未出帳金額減少）；
+  // sign -1 = 刪除這筆繳款紀錄時還原。現金不影響任何帳戶餘額。
+  function payCardBill(cardId, paymentId, amount, sign) {
+    const card = state.cards.find(c => c.id === cardId);
+    if (card) card.unbilled -= amount * sign;
+    if (paymentId === "cash") return;
+    const acc = state.accounts.find(a => a.id === paymentId);
+    if (acc) acc.balance -= amount * sign;
+  }
+
   function deleteTransaction(id) {
     const idx = state.transactions.findIndex(t => t.id === id);
     if (idx === -1) return;
     const tx = state.transactions[idx];
     if (tx.type === "transfer") {
       applyTransfer(tx.fromAccountId, tx.toAccountId, tx.amount, -1);
+    } else if (tx.type === "cardpayment") {
+      payCardBill(tx.cardId, tx.paymentId, tx.amount, -1);
     } else {
       applyPaymentDelta(tx.paymentId, tx.amount, tx.type === "income" ? +1 : -1);
     }
@@ -492,6 +504,20 @@
             <button class="item-delete" data-del="${t.id}" aria-label="刪除">✕</button>
           </li>`;
       }
+      if (t.type === "cardpayment") {
+        const card = state.cards.find(c => c.id === t.cardId);
+        const cardName = card ? card.name : "未知信用卡";
+        return `
+          <li class="list-item">
+            <span class="item-dot" style="background:var(--c-adjust)"></span>
+            <div class="item-main">
+              <div class="item-title">${escapeHtml(cardName)} 繳款</div>
+              <div class="item-sub">${t.date} · 用 ${paymentLabel(t.paymentId)} 支付</div>
+            </div>
+            <div class="item-amount">💳 ${money(t.amount)}</div>
+            <button class="item-delete" data-del="${t.id}" aria-label="刪除">✕</button>
+          </li>`;
+      }
       const color = categoryColor(t.category, t.type);
       const isIncome = t.type === "income";
       return `
@@ -513,6 +539,8 @@
         if (!tx) return;
         const desc = tx.type === "transfer"
           ? `「${escapeHtml(tx.item)}」⇄ ${money(tx.amount)} 這筆轉帳紀錄刪除後無法復原，兩個帳戶的餘額會各自還原。`
+          : tx.type === "cardpayment"
+          ? `這筆信用卡繳款紀錄（💳 ${money(tx.amount)}）刪除後無法復原，支付帳戶的餘額跟信用卡的未出帳金額都會還原。`
           : `「${escapeHtml(tx.item)}」${tx.type === "income" ? "+" : "-"}${money(tx.amount)} 這筆紀錄刪除後無法復原。`;
         confirmDelete(desc, () => deleteTransaction(id));
       });
@@ -762,9 +790,16 @@
             <span>每月 ${c.billingDay} 號結帳 · ${c.dueDay} 號前繳款</span>
             <span class="due-badge ${cls}"><span class="due-dot"></span>${badgeText}</span>
           </div>
+          ${c.unbilled > 0 ? `<button class="credit-card-pay-btn" data-pay-card="${c.id}">✓ 已繳款</button>` : ""}
         </li>`;
     }).join("");
 
+    list.querySelectorAll("[data-pay-card]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const card = state.cards.find(c => c.id === btn.getAttribute("data-pay-card"));
+        if (card) openCardPaymentModal(card);
+      });
+    });
     list.querySelectorAll("[data-del-card]").forEach(btn => {
       btn.addEventListener("click", () => {
         const id = btn.getAttribute("data-del-card");
@@ -815,6 +850,89 @@
         }
         renderCards(); renderHome();
       }
+    });
+  }
+
+  /* ================= 信用卡繳款 =================
+     記一筆「繳款」：從某個帳戶（或現金）付錢，把這張卡的未出帳金額
+     沖掉一部分或全部。這筆錢在買東西當下（applyPaymentDelta 把 unbilled
+     加上去的時候）就已經算過一次支出了，所以繳款本身不算新的支出，
+     也不算收入 —— 跟帳戶互轉一樣，只是單純的資金移動紀錄。 */
+  function openCardPaymentModal(card) {
+    if (card.unbilled <= 0) {
+      modalBody.innerHTML = `
+        <h3>信用卡繳款</h3>
+        <p class="confirm-message">「${escapeHtml(card.name)}」目前沒有未出帳金額，不需要繳款。</p>
+        <div class="modal-actions">
+          <button class="btn-save" id="cardPayOkBtn" style="flex:1;">好</button>
+        </div>`;
+      modalOverlay.classList.add("open");
+      modalBody.querySelector("#cardPayOkBtn").addEventListener("click", closeModal);
+      return;
+    }
+
+    let amountMode = "full"; // 'full' | 'custom'
+    const methodOptions = `<option value="cash">現金</option>` +
+      state.accounts.map(a => `<option value="${a.id}">${escapeHtml(a.name)}</option>`).join("");
+
+    modalBody.innerHTML = `
+      <h3>信用卡繳款 · ${escapeHtml(card.name)}</h3>
+      <p class="hint-text" style="margin:0 0 4px;">本期未出帳金額 ${money(card.unbilled)}</p>
+      <label class="field-label">繳款金額</label>
+      <div class="type-toggle" id="cardPayAmountToggle">
+        <button type="button" class="type-btn active" data-mode="full">全部</button>
+        <button type="button" class="type-btn" data-mode="custom">自訂金額</button>
+      </div>
+      <input id="cardPayAmount" class="text-input" type="number" min="0" max="${card.unbilled}" value="${card.unbilled}" readonly style="margin-top:8px;">
+      <label class="field-label">用什麼方式繳款</label>
+      <select id="cardPayMethod" class="text-input">${methodOptions}</select>
+      <p class="hint-text" id="cardPayHint"></p>
+      <div class="modal-actions">
+        <button class="btn-cancel" id="cardPayCancelBtn">取消</button>
+        <button class="btn-save" id="cardPaySaveBtn">確認繳款</button>
+      </div>`;
+    modalOverlay.classList.add("open");
+
+    const amountToggle = modalBody.querySelector("#cardPayAmountToggle");
+    const amountInput = modalBody.querySelector("#cardPayAmount");
+    const hint = modalBody.querySelector("#cardPayHint");
+
+    amountToggle.addEventListener("click", (e) => {
+      const btn = e.target.closest(".type-btn");
+      if (!btn) return;
+      amountMode = btn.getAttribute("data-mode");
+      amountToggle.querySelectorAll(".type-btn").forEach(b => b.classList.toggle("active", b === btn));
+      if (amountMode === "full") {
+        amountInput.value = card.unbilled;
+        amountInput.readOnly = true;
+      } else {
+        amountInput.readOnly = false;
+        amountInput.value = "";
+        amountInput.focus();
+      }
+    });
+
+    modalBody.querySelector("#cardPayCancelBtn").addEventListener("click", closeModal);
+    modalBody.querySelector("#cardPaySaveBtn").addEventListener("click", () => {
+      const amount = parseFloat(amountInput.value);
+      const paymentId = modalBody.querySelector("#cardPayMethod").value;
+      if (!amount || amount <= 0) { hint.textContent = "請輸入有效金額"; return; }
+      if (amount > card.unbilled) { hint.textContent = `金額不能超過本期未出帳金額 ${money(card.unbilled)}`; return; }
+
+      state.transactions.unshift({
+        id: uid(),
+        type: "cardpayment",
+        date: new Date().toISOString().slice(0, 10),
+        item: `${card.name} 繳款`,
+        amount,
+        cardId: card.id,
+        paymentId
+      });
+      payCardBill(card.id, paymentId, amount, +1);
+
+      closeModal();
+      renderCards(); renderAccounts(); renderHome();
+      saveState(state);
     });
   }
 
