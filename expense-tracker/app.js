@@ -106,6 +106,7 @@
 
     return {
       updatedAt: Date.now(),
+      cashBalance: 1500,
       accounts: [
         { id: "a1", name: "國泰銀行", balance: 52340 },
         { id: "a2", name: "台北富邦", balance: 18000 },
@@ -170,6 +171,22 @@
   // 絕不覆蓋使用者已經新增過的自訂關鍵字）
   function migrateState(s) {
     const mKey = currentMonthKey();
+    // 現金：原本只是記帳時的一個付款選項，沒有真正記錄餘額；現在跟銀行
+    // 帳戶一樣有自己的餘額，可以在「帳戶」分頁查看／調整。舊資料沒有
+    // 這個欄位的話，不能直接當成 0——有些人（包含在這之前就已經用「調整」
+    // 分類手動記過一筆現金收入來代表目前現金餘額）過去記的現金相關紀錄
+    // 其實是有意義的，所以用「重播」過去所有現金付款方式的支出/收入/
+    // 信用卡繳款，算出遷移當下現金應該有多少，而不是讓數字憑空歸零。
+    if (typeof s.cashBalance !== "number") {
+      let cash = 0;
+      (s.transactions || []).forEach(t => {
+        if (t.paymentId !== "cash") return;
+        if (t.type === "cardpayment") cash -= t.amount;
+        else if ((t.type || "expense") === "income") cash += t.amount;
+        else if ((t.type || "expense") === "expense") cash -= t.amount;
+      });
+      s.cashBalance = cash;
+    }
     const legacyResetDay = s.recurringResetDay || 1;
     (s.recurring || []).forEach(r => {
       if (!r.resetDay) r.resetDay = legacyResetDay;
@@ -438,9 +455,9 @@
   }
 
   function applyPaymentDelta(paymentId, amount, sign) {
-    // sign +1 = 支出效果（帳戶減少 / 卡片未出帳增加）；sign -1 = 收入效果
-    // （帳戶增加）或刪除一筆支出時的還原。現金不影響任何帳戶。
-    if (paymentId === "cash") return;
+    // sign +1 = 支出效果（帳戶／現金減少、卡片未出帳增加）；sign -1 =
+    // 收入效果（帳戶／現金增加）或刪除一筆支出時的還原。
+    if (paymentId === "cash") { state.cashBalance -= amount * sign; return; }
     const acc = state.accounts.find(a => a.id === paymentId);
     if (acc) { acc.balance -= amount * sign; return; }
     const card = state.cards.find(c => c.id === paymentId);
@@ -456,12 +473,12 @@
   }
 
   // 信用卡繳款：sign +1 = 執行繳款（付款帳戶／現金減少、該卡本期應繳金額
-  // statementAmount 減少）；sign -1 = 刪除這筆繳款紀錄時還原。現金不影響
-  // 任何帳戶餘額。只還「本期應繳」，不動已刷卡未出帳（unbilled）的部分。
+  // statementAmount 減少）；sign -1 = 刪除這筆繳款紀錄時還原。只還
+  // 「本期應繳」，不動已刷卡未出帳（unbilled）的部分。
   function payCardBill(cardId, paymentId, amount, sign) {
     const card = state.cards.find(c => c.id === cardId);
     if (card) card.statementAmount -= amount * sign;
-    if (paymentId === "cash") return;
+    if (paymentId === "cash") { state.cashBalance -= amount * sign; return; }
     const acc = state.accounts.find(a => a.id === paymentId);
     if (acc) acc.balance -= amount * sign;
   }
@@ -506,6 +523,10 @@
     const y = target.getFullYear(), m = target.getMonth();
     return state.transactions.filter(t => {
       if (type && (t.type || "expense") !== type) return false;
+      // 調整只是拿來校正帳戶/現金餘額用的（例如手動輸入初始餘額、對帳
+      // 誤差），不是真正的花費或收入，所以本月支出/收入統計跟圓餅圖都
+      // 不列入——但金額還是會照樣影響帳戶餘額，也還是會留在最近紀錄裡。
+      if (t.category === "調整") return false;
       const d = new Date(t.date);
       return d.getFullYear() === y && d.getMonth() === m;
     });
@@ -520,7 +541,7 @@
     const incomeTotal = monthTotalIncome(0).reduce((s, t) => s + t.amount, 0);
     document.getElementById("monthIncome").textContent = money(incomeTotal);
 
-    const accTotal = state.accounts.reduce((s, a) => s + a.balance, 0);
+    const accTotal = state.accounts.reduce((s, a) => s + a.balance, 0) + state.cashBalance;
     document.getElementById("totalBalance").textContent = money(accTotal);
 
     renderPaymentOptions(paymentSelect, { excludeCards: entryType === "income" });
@@ -669,7 +690,20 @@
   /* ================= 帳戶 ================= */
   function renderAccounts() {
     const list = document.getElementById("accountList");
-    list.innerHTML = state.accounts.map(a => `
+    // 現金固定釘在最上面，且不能刪除（不是「新增」出來的帳戶，是內建
+    // 的一個付款方式，只是現在多了可以查看／調整的餘額）；只給編輯按鈕。
+    const cashRow = `
+      <li class="list-item">
+        <span class="item-dot" style="background:var(--c-fuel)"></span>
+        <div class="item-main">
+          <div class="item-title">現金</div>
+          <div class="item-sub">隨身現金</div>
+        </div>
+        <div class="item-amount">${money(state.cashBalance)}</div>
+        <button class="item-edit" id="editCashBtn" aria-label="編輯">✎</button>
+      </li>`;
+
+    list.innerHTML = cashRow + state.accounts.map(a => `
       <li class="list-item">
         <span class="item-dot" style="background:var(--c-fun)"></span>
         <div class="item-main">
@@ -679,6 +713,8 @@
         <div class="item-amount">${money(a.balance)}</div>
         <button class="item-delete" data-del-acc="${a.id}" aria-label="刪除">✕</button>
       </li>`).join("");
+
+    document.getElementById("editCashBtn").addEventListener("click", openCashModal);
 
     list.querySelectorAll("[data-del-acc]").forEach(btn => {
       btn.addEventListener("click", () => {
@@ -694,7 +730,24 @@
     });
 
     document.getElementById("accountsTotal").textContent =
-      money(state.accounts.reduce((s, a) => s + a.balance, 0));
+      money(state.accounts.reduce((s, a) => s + a.balance, 0) + state.cashBalance);
+  }
+
+  // 現金餘額用一個很單純的單欄位 modal 直接調整（例如提款、發現數字對
+  // 不上想手動校正），不透過記一筆支出/收入，避免又跑出一筆不必要的
+  // 交易紀錄——跟信用卡編輯視窗一樣，是「設定目前的值」而不是「加減」。
+  function openCashModal() {
+    openModal({
+      title: "調整現金餘額",
+      fields: [
+        { key: "cashBalance", label: "目前現金餘額", type: "number", placeholder: "0" }
+      ],
+      initial: { cashBalance: state.cashBalance },
+      onSave: (v) => {
+        state.cashBalance = parseFloat(v.cashBalance) || 0;
+        renderAccounts(); renderHome();
+      }
+    });
   }
 
   document.getElementById("addAccountBtn").addEventListener("click", () => {
