@@ -61,7 +61,7 @@ body{
 .phone{
   width: 100%;
   max-width: 420px;
-  min-height: 780px; /* 安全預設值：絕不硬砍內容，避免在未知的外層容器裡把畫面剪掉 */
+  min-height: 780px;
   background: var(--surface);
   border-radius: 36px;
   box-shadow: var(--shadow-soft);
@@ -71,11 +71,6 @@ body{
   overflow: hidden;
   position: relative;
 }
-/* 只有獨立開啟（桌面預覽）時才鎖固定高度，讓 .content 內部捲動、
-   底部導覽列固定；被包在別的頁面裡開啟時維持安全預設值，避免跟外層
-   容器的量測邏輯打架。 min-height:0 是為了蓋掉上面的安全預設值，
-   不然兩個高度規則衝突時，數字比較大的 min-height 會贏，鎖定就失效。 */
-html:not(.claude-embedded) .phone{ height: 780px; min-height: 0; }
 
 /* ---------- 頂部列 ---------- */
 .topbar{
@@ -118,14 +113,17 @@ html:not(.claude-embedded) .phone{ height: 780px; min-height: 0; }
 }
 .sync-badge.on{ opacity: 1; }
 
-/* ---------- 內容區 ---------- */
+/* ---------- 內容區 ----------
+   不在這裡開自己的捲動（不用 overflow-y:auto）。改用「sticky footer」
+   模式：.content 用 flex:1 撐開高度，底部導覽列用 position:sticky
+   貼在畫面最下面，捲動交給最外層（瀏覽器分頁，或是 Claude Artifact
+   檢視器自己的捲軸）處理。這樣不管頁面是被包在什麼樣的外層容器裡，
+   都不用去猜測、鎖定實際螢幕高度是多少，導覽列永遠找得到、按得到，
+   跟 LINE 那種原生 App 的底部列滑動方式一樣。 */
 .content{
   flex: 1;
-  overflow-y: auto;
-  padding: 4px 18px 100px;
-  scrollbar-width: none;
+  padding: 4px 18px 20px;
 }
-.content::-webkit-scrollbar{ display: none; }
 
 .tab-panel{ display: none; animation: fadeIn .25s ease; }
 .tab-panel.active{ display: block; }
@@ -545,8 +543,9 @@ html:not(.claude-embedded) .phone{ height: 780px; min-height: 0; }
 
 /* ---------- 底部導覽 ---------- */
 .bottom-nav{
-  position: absolute;
-  bottom: 0; left: 0; right: 0;
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
   display: flex;
   background: var(--surface);
   border-top: 1px solid var(--border);
@@ -655,14 +654,15 @@ html:not(.claude-embedded) .phone{ height: 780px; min-height: 0; }
 
 @media (max-width: 460px){
   body{ padding: 0; }
-  .phone{ border-radius: 0; max-width: 100%; }
-
-  /* 鎖死頁面本身的高度，讓底部導覽列永遠貼在畫面最下面，捲動只發生在
-     .content 內部（像原生 App 一樣）——但只在頁面是「獨立開啟」時套用
-     （GitHub Pages、加入主畫面的 PWA、直接開檔案）。如果是被包在別的
-     頁面裡開啟（例如 Claude Artifact 檢視器），外層容器通常會自動撐高
-     去配合內容，vh/dvh 鎖定反而會跟外層的量測互相打架，把底部導覽列
-     推到看不到、點不到的地方，所以那種情況維持原本「整頁一起捲動」。 */
-  html:not(.claude-embedded) body{ height: 100vh; height: 100dvh; overflow: hidden; }
-  html:not(.claude-embedded) .phone{ height: 100vh; height: 100dvh; min-height: 0; }
+  .phone{
+    border-radius: 0;
+    max-width: 100%;
+    min-height: 100vh;
+    min-height: 100dvh;
+    /* border-radius 已經是 0，不需要再靠 overflow:hidden 裁圓角，
+       改成 visible 讓 .bottom-nav 的 position:sticky 能貼著「真正的」
+       瀏覽器／Artifact 檢視器可視範圍，而不是被 .phone 自己的裁切
+       框關住、貼到整個頁面的最底端才出現。 */
+    overflow: visible;
+  }
 }

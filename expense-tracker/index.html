@@ -19,22 +19,6 @@
 </head>
 <body>
 
-<script>
-  // 判斷這個頁面是不是被包在別的頁面裡開啟（例如 Claude Artifact 檢視器）。
-  // 放在 body 最前面（而不是 head）是刻意的：Artifact 發布時只會保留
-  // <body> 裡的內容，寫在 head 會在發布出去的版本裡直接消失、偵測不到。
-  //
-  // 那種被包住的情況下，外層容器通常會自動撐高去配合內容，而不是給我們
-  // 固定的螢幕高度可以用 vh/dvh 鎖定——硬鎖高度反而會把底部導覽列推到
-  // 看不到、點不到的地方。所以「鎖定螢幕高度、內容區自己捲動」這招只在
-  // 頁面是獨立開啟時套用（GitHub Pages、加入主畫面的 PWA、直接開檔案）。
-  try {
-    if (window.self !== window.top) document.documentElement.classList.add("claude-embedded");
-  } catch (e) {
-    document.documentElement.classList.add("claude-embedded");
-  }
-</script>
-
 <script type="application/json" id="app-state"></script>
 
 <div class="phone">

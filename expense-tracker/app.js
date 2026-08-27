@@ -1033,6 +1033,7 @@
       const tab = btn.getAttribute("data-tab");
       document.querySelectorAll(".nav-btn").forEach(b => b.classList.toggle("active", b === btn));
       document.querySelectorAll(".tab-panel").forEach(p => p.classList.toggle("active", p.id === `tab-${tab}`));
+      window.scrollTo({ top: 0, behavior: "instant" }); // 切分頁時捲回最上面，避免停在上個分頁的捲動位置
 
       const titles = {
         home: "今天想記點什麼？",
