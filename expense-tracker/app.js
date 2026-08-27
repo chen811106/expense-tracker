@@ -554,4 +554,13 @@
   renderCards();
   renderRecurring();
 
+  /* ---------------- PWA：註冊 Service Worker（離線快取） ---------------- */
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("sw.js").catch(() => {
+        /* 開發環境或不支援時靜默略過，不影響一般網頁使用 */
+      });
+    });
+  }
+
 })();
