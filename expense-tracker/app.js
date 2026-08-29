@@ -1010,14 +1010,15 @@
   }
 
   /* ================= 匯出記帳紀錄（純文字）／清理記帳項目 =================
-     把支出/收入紀錄依月份整理成一段純文字（逐筆明細 + 月支出/收入分佈
-     百分比，百分比的分類範圍跟算法都跟「圖表」頁一致，一樣只算計入
-     損益的分類），給使用者自己複製貼到別的地方保存。
-     「清理記帳項目」只會刪除支出/收入這兩種紀錄本身——轉帳、信用卡
-     繳款不算「每天記帳的加加減減」，不列入、也不清；帳戶/信用卡/
-     現金餘額本來就是各自獨立累計的數字，不是即時從交易紀錄加總出來
-     的，所以刪掉舊的支出/收入紀錄完全不影響這些餘額、也不影響待辦
-     清單跟分類設定。 */
+     把支出/收入/信用卡繳款紀錄依月份整理成一段純文字（逐筆明細 + 月
+     支出/收入分佈百分比，百分比的分類範圍跟算法都跟「圖表」頁一致，
+     一樣只算計入損益的分類；信用卡繳款本身不是一個分類，不會列入
+     百分比計算，但一樣會出現在逐筆明細裡），最後加上一段「目前帳戶
+     總覽」的即時快照，給使用者自己複製貼到別的地方保存。
+     「清理記帳項目」會把支出/收入/信用卡繳款這三種紀錄都清空——轉帳
+     不算日常花費，繼續保留。帳戶/信用卡/現金餘額本來就是各自獨立
+     累計的數字，不是即時從交易紀錄加總出來的，所以清掉這些舊紀錄
+     完全不影響這些餘額、也不影響待辦清單跟分類設定。 */
   function categoryDistributionLine(txs) {
     if (!txs.length) return "";
     const totals = categoryTotals(txs);
@@ -1029,13 +1030,23 @@
       .join("、");
   }
 
+  // 逐筆明細每一行的格式：日期 [分類：]項目：±金額元：付款方式。
+  // 信用卡繳款沒有分類，中括號那段就省略；付款方式一律用
+  // paymentLabel()，跟「最近紀錄」列表顯示的名稱一致。
+  function formatExportLine(t) {
+    const d = new Date(t.date);
+    const sign = t.type === "income" ? "+" : "-";
+    const categoryPart = t.category ? `${t.category}：` : "";
+    return `${d.getMonth() + 1}/${d.getDate()} ${categoryPart}${t.item}：${sign}${fmt.format(Math.round(t.amount))}元：${paymentLabel(t.paymentId)}`;
+  }
+
   function buildExportText() {
-    // 依「年-月」把支出/收入紀錄分組；轉帳、信用卡繳款不算日常加減，
+    // 依「年-月」把支出/收入/信用卡繳款紀錄分組；轉帳不算日常加減，
     // 不放進匯出的文字裡。
     const groups = {};
     state.transactions.forEach(t => {
       const type = t.type || "expense";
-      if (type !== "expense" && type !== "income") return;
+      if (type !== "expense" && type !== "income" && type !== "cardpayment") return;
       const d = new Date(t.date);
       const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
       if (!groups[key]) groups[key] = { y: d.getFullYear(), m: d.getMonth() + 1, txs: [] };
@@ -1046,7 +1057,6 @@
       const ga = groups[a], gb = groups[b];
       return ga.y - gb.y || ga.m - gb.m;
     });
-    if (!monthKeys.length) return "";
 
     const lines = [];
     monthKeys.forEach(key => {
@@ -1054,13 +1064,11 @@
       const txs = g.txs.slice().sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
       lines.push(`「${g.y}/${g.m}記帳明細」`);
-      txs.forEach(t => {
-        const d = new Date(t.date);
-        const sign = t.type === "income" ? "+" : "-";
-        lines.push(`${d.getMonth() + 1}/${d.getDate()} ${t.category}：${t.item}：${sign}${fmt.format(Math.round(t.amount))}元`);
-      });
+      txs.forEach(t => lines.push(formatExportLine(t)));
       lines.push("");
 
+      // 支出/收入分佈的百分比只看真正的支出/收入分類（信用卡繳款不是
+      // 分類，不列入），算法、篩選跟「圖表」頁完全一致。
       const expenseTxs = txs.filter(t => (t.type || "expense") === "expense" && countsTowardPL(t.category, "expense"));
       lines.push(`「${g.m}月支出分佈」`);
       lines.push(categoryDistributionLine(expenseTxs) || "（本月無計入統計的支出）");
@@ -1072,6 +1080,17 @@
       lines.push("");
     });
 
+    // 最後加一段「現在帳戶總覽」的即時快照，跟上面逐月的歷史明細不同，
+    // 這段永遠是「匯出當下」的最新餘額，方便對照這份紀錄結算到哪裡。
+    lines.push("「截至目前帳戶總覽」");
+    const total = state.accounts.reduce((s, a) => s + a.balance, 0) + state.cashBalance;
+    lines.push(`總餘額：${fmt.format(Math.round(total))}元`);
+    const breakdown = [{ name: "現金", balance: state.cashBalance }]
+      .concat(state.accounts.map(a => ({ name: a.name, balance: a.balance })))
+      .map(a => `${a.name}：${fmt.format(Math.round(a.balance))}元`)
+      .join("、");
+    lines.push(breakdown);
+
     return lines.join("\n").trim() + "\n";
   }
 
@@ -1079,42 +1098,45 @@
 
   function openExportModal() {
     const text = buildExportText();
-    const hasData = !!text;
+    const hasHistory = state.transactions.some(t => {
+      const type = t.type || "expense";
+      return type === "expense" || type === "income" || type === "cardpayment";
+    });
 
     modalBody.innerHTML = `
       <h3>匯出記帳紀錄</h3>
-      <p class="hint-text" style="margin:0 0 8px;">依月份整理成文字，複製起來就能貼到別的地方自己保存。</p>
-      <textarea id="exportTextArea" class="text-input export-textarea" rows="10" readonly>${hasData ? escapeHtml(text) : ""}</textarea>
-      <p class="hint-text" id="exportHint">${hasData ? "" : "目前還沒有支出/收入紀錄可以匯出。"}</p>
+      <p class="hint-text" style="margin:0 0 8px;">依月份整理成文字，複製起來就能貼到別的地方自己保存，最後一段是目前帳戶餘額的即時快照。</p>
+      <textarea id="exportTextArea" class="text-input export-textarea" rows="10" readonly>${escapeHtml(text)}</textarea>
+      <p class="hint-text" id="exportHint"></p>
       <div class="modal-actions">
         <button class="btn-cancel" id="exportCloseBtn">關閉</button>
-        <button class="btn-save" id="exportCopyBtn" ${hasData ? "" : "disabled"}>📋 複製文字</button>
+        <button class="btn-save" id="exportCopyBtn">📋 複製文字</button>
       </div>
-      ${hasData ? `<button class="add-mini secondary" id="exportClearBtn" style="width:100%;margin-top:14px;">🗑 清理記帳項目（保留帳戶/卡片/待辦/分類設定）</button>` : ""}`;
+      ${hasHistory ? `<button class="add-mini secondary" id="exportClearBtn" style="width:100%;margin-top:14px;">🗑 清理記帳項目（保留帳戶/卡片/待辦/分類設定）</button>` : ""}`;
     modalOverlay.classList.add("open");
 
     modalBody.querySelector("#exportCloseBtn").addEventListener("click", closeModal);
 
-    if (hasData) {
-      const hint = modalBody.querySelector("#exportHint");
-      modalBody.querySelector("#exportCopyBtn").addEventListener("click", async () => {
-        const ta = modalBody.querySelector("#exportTextArea");
-        ta.select();
-        try {
-          await navigator.clipboard.writeText(text);
-          hint.textContent = "已複製到剪貼簿 ✓";
-        } catch (e) {
-          hint.textContent = "自動複製失敗，文字已幫你全選好，用 Ctrl/Cmd+C 手動複製吧";
-        }
-      });
+    const hint = modalBody.querySelector("#exportHint");
+    modalBody.querySelector("#exportCopyBtn").addEventListener("click", async () => {
+      const ta = modalBody.querySelector("#exportTextArea");
+      ta.select();
+      try {
+        await navigator.clipboard.writeText(text);
+        hint.textContent = "已複製到剪貼簿 ✓";
+      } catch (e) {
+        hint.textContent = "自動複製失敗，文字已幫你全選好，用 Ctrl/Cmd+C 手動複製吧";
+      }
+    });
 
+    if (hasHistory) {
       modalBody.querySelector("#exportClearBtn").addEventListener("click", () => {
         confirmDelete(
-          "確定要清理記帳項目嗎？這會把上面列出的所有支出/收入紀錄清空——帳戶、信用卡、現金餘額、待辦清單、分類設定都不會被動到。請先確認上面的文字已經複製保存好，這個動作無法復原。",
+          "確定要清理記帳項目嗎？這會把上面列出的所有支出/收入/信用卡繳款紀錄清空（轉帳紀錄會保留）——帳戶、信用卡、現金餘額、待辦清單、分類設定都不會被動到。請先確認上面的文字已經複製保存好，這個動作無法復原。",
           () => {
             state.transactions = state.transactions.filter(t => {
               const type = t.type || "expense";
-              return type !== "expense" && type !== "income";
+              return type !== "expense" && type !== "income" && type !== "cardpayment";
             });
             // 待辦清單裡如果有項目正指著一筆剛好被清掉的交易，順便把
             // 「已繳」狀態解除，避免變成「顯示已繳、卻找不到那筆紀錄」
