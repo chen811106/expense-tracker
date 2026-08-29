@@ -40,21 +40,28 @@
     { key: "娛樂",        color: "var(--c-fun)",     keywords: ["電影","KTV","唱歌","展覽","演唱會","旅遊","酒吧","門票","樂園","遊戲","娛樂","景點","飯店","住宿","機票"] },
     { key: "生活用品",     color: "var(--c-daily)",   keywords: ["衛生紙","清潔","日用品","超市","全聯","家樂福","寶雅","洗髮精","牙膏","衛生棉","生活","雜貨","文具"] },
     { key: "油錢/停車費",  color: "var(--c-fuel)",    keywords: ["加油","停車","油錢","停車費","高速公路","ETC","過路費","機車保養","汽車保養","洗車"] },
+    { key: "交通",        color: "var(--c-transport)", keywords: ["捷運","公車","客運","火車","台鐵","高鐵","計程車","uber","Uber","悠遊卡","一卡通","電車","地鐵","轉乘","船票","公路局"] },
     { key: "會員費用",     color: "var(--c-member)",  keywords: ["訂閱","會員","netflix","spotify","健身房","月費","年費","disney","youtube"] },
     { key: "服飾",        color: "var(--c-clothes)", keywords: ["衣服","鞋子","包包","飾品","服飾","買衣","uniqlo","zara","gu","outlet","帽子","襪子"] },
     { key: "奢侈品",       color: "var(--c-luxury)",  keywords: ["精品","名牌","珠寶","手錶","lv","gucci","chanel","奢侈","名錶","限量"] },
     { key: "投資",        color: "var(--c-invest)",  keywords: ["買股","股票","定期定額","etf","基金","加碼","進場","證券","期貨","入手股","買進"] },
     { key: "調整",        color: "var(--c-adjust)",  keywords: ["調整","校正","更正","餘額調整","結餘調整","對帳","初始餘額","期初"] }
   ];
-  // 這些是「內建」關鍵字，程式碼更新時會調整；使用者也可以在
-  // 「分類關鍵字」設定裡自行新增專屬關鍵字（存在 state 裡、會跟著同步）。
-  const CATEGORY_MAP = Object.fromEntries(CATEGORIES.map(c => [c.key, c]));
+  // 這些是「內建」分類，程式碼更新時會調整；使用者也可以在「分類關鍵字」
+  // 設定裡自行新增專屬關鍵字，或整個新增自己的分類（都存在 state 裡、
+  // 會跟著同步），不用每次都改程式碼。allCategories() 把內建的跟使用者
+  // 自訂的分類合併成一份清單，之後不管是自動分類、圖表、顏色顯示都從
+  // 這份合併後的清單去找。
   const FALLBACK_CATEGORY = "生活用品";
+
+  function allCategories() {
+    return CATEGORIES.concat(state.customCategories || []);
+  }
 
   function categorize(text) {
     if (!text) return null;
     const t = text.toLowerCase();
-    for (const cat of CATEGORIES) {
+    for (const cat of allCategories()) {
       const custom = (state.categoryKeywords && state.categoryKeywords[cat.key]) || [];
       if (cat.keywords.concat(custom).some(k => t.includes(k.toLowerCase()))) return cat.key;
     }
@@ -70,24 +77,30 @@
     { key: "調整",     color: "var(--c-adjust)",    keywords: ["調整","校正","更正","餘額調整","結餘調整","對帳","初始餘額","期初"] },
     { key: "其他收入", color: "var(--c-other-income)", keywords: [] }
   ];
-  const INCOME_CATEGORY_MAP = Object.fromEntries(INCOME_CATEGORIES.map(c => [c.key, c]));
   const INCOME_FALLBACK_CATEGORY = "其他收入";
+
+  function allIncomeCategories() {
+    return INCOME_CATEGORIES.concat(state.customIncomeCategories || []);
+  }
 
   function categorizeIncome(text) {
     if (!text) return null;
     const t = text.toLowerCase();
-    for (const cat of INCOME_CATEGORIES) {
+    for (const cat of allIncomeCategories()) {
       const custom = (state.incomeCategoryKeywords && state.incomeCategoryKeywords[cat.key]) || [];
       if (cat.keywords.concat(custom).some(k => t.includes(k.toLowerCase()))) return cat.key;
     }
     return INCOME_FALLBACK_CATEGORY;
   }
 
+  // 使用者自訂分類沒有固定的 CSS 色票可以用，新增時從這個小色盤依序輪流
+  // 分配一個顏色（存起來，之後不會因為刪掉別的自訂分類而跟著變色）。
+  const CUSTOM_CATEGORY_PALETTE = ["#8FA3A0","#B5A692","#9CA8B3","#C3A8A0","#A38C96","#BFA9CE","#CDB68A","#93A8A5"];
+
   function categoryColor(category, type) {
-    if (type === "income") {
-      return (INCOME_CATEGORY_MAP[category] || {}).color || "var(--c-other-income)";
-    }
-    return (CATEGORY_MAP[category] || {}).color || "var(--text-faint)";
+    const cat = (type === "income" ? allIncomeCategories() : allCategories()).find(c => c.key === category);
+    if (cat) return cat.color;
+    return type === "income" ? "var(--c-other-income)" : "var(--text-faint)";
   }
 
   /* ---------------- 狀態 / 儲存 ---------------- */
@@ -210,12 +223,17 @@
       }
       if (!c.lastBilledMonth) c.lastBilledMonth = mKey;
     });
+    // 使用者自己新增的分類（不是內建關鍵字，是整個新分類，例如「交通」
+    // 以外自己想再加的類別），存在這兩個陣列裡，跟內建分類合併使用。
+    if (!Array.isArray(s.customCategories)) s.customCategories = [];
+    if (!Array.isArray(s.customIncomeCategories)) s.customIncomeCategories = [];
+
     if (!s.categoryKeywords) s.categoryKeywords = {};
-    CATEGORIES.forEach(c => {
+    CATEGORIES.concat(s.customCategories).forEach(c => {
       if (!Array.isArray(s.categoryKeywords[c.key])) s.categoryKeywords[c.key] = [];
     });
     if (!s.incomeCategoryKeywords) s.incomeCategoryKeywords = {};
-    INCOME_CATEGORIES.forEach(c => {
+    INCOME_CATEGORIES.concat(s.customIncomeCategories).forEach(c => {
       if (!Array.isArray(s.incomeCategoryKeywords[c.key])) s.incomeCategoryKeywords[c.key] = [];
     });
   }
@@ -717,13 +735,13 @@
     const expenseTotals = categoryTotals(monthTotalSpend(chartMonthOffset));
     renderDonutChart({
       svgId: "donutChart", totalId: "donutTotal", legendId: "chartLegend", emptyId: "chartEmpty",
-      entries: CATEGORIES.map(c => ({ key: c.key, color: c.color, value: expenseTotals[c.key] || 0 }))
+      entries: allCategories().map(c => ({ key: c.key, color: c.color, value: expenseTotals[c.key] || 0 }))
     });
 
     const incomeTotals = categoryTotals(monthTotalIncome(chartMonthOffset));
     renderDonutChart({
       svgId: "donutChartIncome", totalId: "donutTotalIncome", legendId: "chartLegendIncome", emptyId: "chartEmptyIncome",
-      entries: INCOME_CATEGORIES.map(c => ({ key: c.key, color: c.color, value: incomeTotals[c.key] || 0 }))
+      entries: allIncomeCategories().map(c => ({ key: c.key, color: c.color, value: incomeTotals[c.key] || 0 }))
     });
   }
 
@@ -1291,13 +1309,14 @@
     let kwType = "expense";
 
     modalBody.innerHTML = `
-      <h3>管理分類關鍵字</h3>
+      <h3>管理分類</h3>
       <div class="type-toggle" id="kwType">
         <button type="button" class="type-btn active" data-type="expense">支出分類</button>
         <button type="button" class="type-btn" data-type="income">收入分類</button>
       </div>
       <label class="field-label">選擇分類</label>
       <select id="kwCategorySelect" class="text-input"></select>
+      <div id="kwCustomCategoryActions"></div>
       <div class="field-label" style="margin-top:14px;">系統預設關鍵字</div>
       <div class="chip-list" id="kwDefaultChips"></div>
       <div class="field-label" style="margin-top:14px;">我新增的關鍵字</div>
@@ -1306,6 +1325,12 @@
         <input id="kwNewInput" class="text-input" placeholder="輸入新關鍵字，例如：青菜">
         <button class="add-mini" id="kwAddBtn" style="white-space:nowrap;">新增</button>
       </div>
+      <div class="field-label" style="margin-top:18px;">新增一個屬於自己的分類</div>
+      <div class="row">
+        <input id="kwNewCategoryInput" class="text-input" placeholder="例如：交通、寵物">
+        <button class="add-mini" id="kwAddCategoryBtn" style="white-space:nowrap;">新增分類</button>
+      </div>
+      <p class="hint-text" id="kwNewCategoryHint"></p>
       <div class="modal-actions">
         <button class="btn-save" id="kwDone" style="flex:1;">完成</button>
       </div>`;
@@ -1313,12 +1338,18 @@
 
     const kwTypeToggle = modalBody.querySelector("#kwType");
     const categorySelect = modalBody.querySelector("#kwCategorySelect");
+    const customActionsEl = modalBody.querySelector("#kwCustomCategoryActions");
     const defaultChipsEl = modalBody.querySelector("#kwDefaultChips");
     const customChipsEl = modalBody.querySelector("#kwCustomChips");
     const newInput = modalBody.querySelector("#kwNewInput");
+    const newCategoryInput = modalBody.querySelector("#kwNewCategoryInput");
+    const newCategoryHint = modalBody.querySelector("#kwNewCategoryHint");
 
     function categoryList() {
-      return kwType === "income" ? INCOME_CATEGORIES : CATEGORIES;
+      return kwType === "income" ? allIncomeCategories() : allCategories();
+    }
+    function customCategoryList() {
+      return kwType === "income" ? state.customIncomeCategories : state.customCategories;
     }
     function customStore() {
       return kwType === "income" ? state.incomeCategoryKeywords : state.categoryKeywords;
@@ -1326,6 +1357,29 @@
 
     function renderCategorySelect() {
       categorySelect.innerHTML = categoryList().map(c => `<option value="${c.key}">${c.key}</option>`).join("");
+    }
+
+    // 自己新增的分類才會顯示「刪除這個分類」；內建分類不能刪，只能管理
+    // 關鍵字。刪掉分類只是拿掉這個選項，過去已經歸類進去的紀錄不會被
+    // 刪除，分類名稱會照樣顯示，只是之後不會再被自動分類選到。
+    function renderCustomActions() {
+      const key = categorySelect.value;
+      const isCustom = customCategoryList().some(c => c.key === key);
+      customActionsEl.innerHTML = isCustom
+        ? `<button class="add-mini secondary" id="kwDeleteCategoryBtn" style="margin-top:8px;">🗑 刪除「${escapeHtml(key)}」這個自訂分類</button>`
+        : "";
+      if (isCustom) {
+        customActionsEl.querySelector("#kwDeleteCategoryBtn").addEventListener("click", () => {
+          const list = customCategoryList();
+          const idx = list.findIndex(c => c.key === key);
+          if (idx !== -1) list.splice(idx, 1);
+          renderCategorySelect();
+          renderCustomActions();
+          renderChips();
+          saveState(state);
+          renderChart();
+        });
+      }
     }
 
     function renderChips() {
@@ -1356,10 +1410,14 @@
       kwType = btn.getAttribute("data-type");
       kwTypeToggle.querySelectorAll(".type-btn").forEach(b => b.classList.toggle("active", b === btn));
       renderCategorySelect();
+      renderCustomActions();
       renderChips();
     });
 
-    categorySelect.addEventListener("change", renderChips);
+    categorySelect.addEventListener("change", () => {
+      renderCustomActions();
+      renderChips();
+    });
 
     modalBody.querySelector("#kwAddBtn").addEventListener("click", () => {
       const kw = newInput.value.trim();
@@ -1377,9 +1435,37 @@
       if (e.key === "Enter") { e.preventDefault(); modalBody.querySelector("#kwAddBtn").click(); }
     });
 
+    // 新增一整個分類（不是關鍵字）：給名稱、自動配一個色票裡的顏色，
+    // 加進去之後直接選到它，方便馬上接著幫它加關鍵字。
+    modalBody.querySelector("#kwAddCategoryBtn").addEventListener("click", () => {
+      const name = newCategoryInput.value.trim();
+      if (!name) return;
+      if (categoryList().some(c => c.key === name)) {
+        newCategoryHint.textContent = `「${name}」已經是一個分類了`;
+        return;
+      }
+      const list = customCategoryList();
+      const color = CUSTOM_CATEGORY_PALETTE[list.length % CUSTOM_CATEGORY_PALETTE.length];
+      list.push({ key: name, color, keywords: [] });
+      customStore()[name] = [];
+      newCategoryInput.value = "";
+      newCategoryHint.textContent = "";
+      renderCategorySelect();
+      categorySelect.value = name;
+      renderCustomActions();
+      renderChips();
+      saveState(state);
+      renderChart();
+    });
+
+    newCategoryInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); modalBody.querySelector("#kwAddCategoryBtn").click(); }
+    });
+
     modalBody.querySelector("#kwDone").addEventListener("click", closeModal);
 
     renderCategorySelect();
+    renderCustomActions();
     renderChips();
   }
 
