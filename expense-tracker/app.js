@@ -1009,6 +1009,130 @@
     });
   }
 
+  /* ================= 匯出記帳紀錄（純文字）／清理記帳項目 =================
+     把支出/收入紀錄依月份整理成一段純文字（逐筆明細 + 月支出/收入分佈
+     百分比，百分比的分類範圍跟算法都跟「圖表」頁一致，一樣只算計入
+     損益的分類），給使用者自己複製貼到別的地方保存。
+     「清理記帳項目」只會刪除支出/收入這兩種紀錄本身——轉帳、信用卡
+     繳款不算「每天記帳的加加減減」，不列入、也不清；帳戶/信用卡/
+     現金餘額本來就是各自獨立累計的數字，不是即時從交易紀錄加總出來
+     的，所以刪掉舊的支出/收入紀錄完全不影響這些餘額、也不影響待辦
+     清單跟分類設定。 */
+  function categoryDistributionLine(txs) {
+    if (!txs.length) return "";
+    const totals = categoryTotals(txs);
+    const total = txs.reduce((s, t) => s + t.amount, 0);
+    return Object.keys(totals)
+      .map(k => ({ key: k, value: totals[k] }))
+      .sort((a, b) => b.value - a.value)
+      .map(e => `${e.key}${Math.round((e.value / total) * 100)}%`)
+      .join("、");
+  }
+
+  function buildExportText() {
+    // 依「年-月」把支出/收入紀錄分組；轉帳、信用卡繳款不算日常加減，
+    // 不放進匯出的文字裡。
+    const groups = {};
+    state.transactions.forEach(t => {
+      const type = t.type || "expense";
+      if (type !== "expense" && type !== "income") return;
+      const d = new Date(t.date);
+      const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
+      if (!groups[key]) groups[key] = { y: d.getFullYear(), m: d.getMonth() + 1, txs: [] };
+      groups[key].txs.push(t);
+    });
+
+    const monthKeys = Object.keys(groups).sort((a, b) => {
+      const ga = groups[a], gb = groups[b];
+      return ga.y - gb.y || ga.m - gb.m;
+    });
+    if (!monthKeys.length) return "";
+
+    const lines = [];
+    monthKeys.forEach(key => {
+      const g = groups[key];
+      const txs = g.txs.slice().sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+
+      lines.push(`「${g.y}/${g.m}記帳明細」`);
+      txs.forEach(t => {
+        const d = new Date(t.date);
+        const sign = t.type === "income" ? "+" : "-";
+        lines.push(`${d.getMonth() + 1}/${d.getDate()} ${t.category}：${t.item}：${sign}${fmt.format(Math.round(t.amount))}元`);
+      });
+      lines.push("");
+
+      const expenseTxs = txs.filter(t => (t.type || "expense") === "expense" && countsTowardPL(t.category, "expense"));
+      lines.push(`「${g.m}月支出分佈」`);
+      lines.push(categoryDistributionLine(expenseTxs) || "（本月無計入統計的支出）");
+      lines.push("");
+
+      const incomeTxs = txs.filter(t => t.type === "income" && countsTowardPL(t.category, "income"));
+      lines.push(`「${g.m}月收入分佈」`);
+      lines.push(categoryDistributionLine(incomeTxs) || "（本月無計入統計的收入）");
+      lines.push("");
+    });
+
+    return lines.join("\n").trim() + "\n";
+  }
+
+  document.getElementById("exportBtn").addEventListener("click", openExportModal);
+
+  function openExportModal() {
+    const text = buildExportText();
+    const hasData = !!text;
+
+    modalBody.innerHTML = `
+      <h3>匯出記帳紀錄</h3>
+      <p class="hint-text" style="margin:0 0 8px;">依月份整理成文字，複製起來就能貼到別的地方自己保存。</p>
+      <textarea id="exportTextArea" class="text-input export-textarea" rows="10" readonly>${hasData ? escapeHtml(text) : ""}</textarea>
+      <p class="hint-text" id="exportHint">${hasData ? "" : "目前還沒有支出/收入紀錄可以匯出。"}</p>
+      <div class="modal-actions">
+        <button class="btn-cancel" id="exportCloseBtn">關閉</button>
+        <button class="btn-save" id="exportCopyBtn" ${hasData ? "" : "disabled"}>📋 複製文字</button>
+      </div>
+      ${hasData ? `<button class="add-mini secondary" id="exportClearBtn" style="width:100%;margin-top:14px;">🗑 清理記帳項目（保留帳戶/卡片/待辦/分類設定）</button>` : ""}`;
+    modalOverlay.classList.add("open");
+
+    modalBody.querySelector("#exportCloseBtn").addEventListener("click", closeModal);
+
+    if (hasData) {
+      const hint = modalBody.querySelector("#exportHint");
+      modalBody.querySelector("#exportCopyBtn").addEventListener("click", async () => {
+        const ta = modalBody.querySelector("#exportTextArea");
+        ta.select();
+        try {
+          await navigator.clipboard.writeText(text);
+          hint.textContent = "已複製到剪貼簿 ✓";
+        } catch (e) {
+          hint.textContent = "自動複製失敗，文字已幫你全選好，用 Ctrl/Cmd+C 手動複製吧";
+        }
+      });
+
+      modalBody.querySelector("#exportClearBtn").addEventListener("click", () => {
+        confirmDelete(
+          "確定要清理記帳項目嗎？這會把上面列出的所有支出/收入紀錄清空——帳戶、信用卡、現金餘額、待辦清單、分類設定都不會被動到。請先確認上面的文字已經複製保存好，這個動作無法復原。",
+          () => {
+            state.transactions = state.transactions.filter(t => {
+              const type = t.type || "expense";
+              return type !== "expense" && type !== "income";
+            });
+            // 待辦清單裡如果有項目正指著一筆剛好被清掉的交易，順便把
+            // 「已繳」狀態解除，避免變成「顯示已繳、卻找不到那筆紀錄」
+            // 的不一致狀態。
+            state.recurring.forEach(r => {
+              if (r.lastTxId && !state.transactions.some(t => t.id === r.lastTxId)) {
+                r.lastTxId = null;
+                r.done = false;
+              }
+            });
+            renderHome(); renderChart(); renderAccounts(); renderCards(); renderRecurring();
+            saveState(state);
+          }
+        );
+      });
+    }
+  }
+
   /* ================= 信用卡 ================= */
   const CARD_THEMES = ["", "theme-1", "theme-2", "theme-3"];
 

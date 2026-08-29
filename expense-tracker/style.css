@@ -213,6 +213,17 @@ body{
 .row{ display: flex; gap: 12px; }
 .row .field{ flex: 1; }
 
+/* 匯出記帳紀錄的文字框：字級刻意不動（維持跟其他 .text-input 一樣的
+   16px，避免 iOS 自動放大），只加高度、改成等寬字體方便對齊、允許
+   使用者自己拉高。 */
+.export-textarea{
+  min-height: 220px;
+  resize: vertical;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
 /* ---------- 支出／收入 切換 ---------- */
 .type-toggle{
   display: flex;
