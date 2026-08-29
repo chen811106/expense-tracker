@@ -407,6 +407,14 @@ body{
 .legend .legend-name{ flex: 1; color: var(--text-primary); }
 .legend .legend-percent{ color: var(--text-faint); font-size: 11px; width: 38px; text-align: right; }
 .legend .legend-amount{ color: var(--text-primary); font-weight: 600; width: 72px; text-align: right; }
+/* 圖例每一列都能點進去看這個分類這個月的明細 */
+.legend-clickable{ cursor: pointer; }
+.legend-clickable:active{ opacity: .7; }
+.legend-arrow{ color: var(--text-faint); font-size: 15px; margin-left: -2px; }
+
+/* 圖表分類明細彈窗：交易可能很多筆，讓清單自己捲動，不要把整個
+   modal 撐到超出畫面 */
+.modal-scroll-list{ max-height: 46vh; overflow-y: auto; }
 
 /* ---------- 帳戶 ---------- */
 .total-row{
@@ -578,6 +586,7 @@ body{
 .recurring-name{ font-size: 14px; color: var(--text-primary); }
 .recurring-name.done{ text-decoration: line-through; color: var(--text-faint); }
 .recurring-sub{ font-size: 11px; color: var(--text-faint); margin-top: 2px; }
+.recurring-sub.recurring-auto{ color: var(--safe); }
 .recurring-amount{ font-size: 13px; color: var(--text-secondary); font-weight: 600; white-space: nowrap; }
 .recurring-amount.done{ color: var(--text-faint); text-decoration: line-through; }
 .recurring-actions{ display: flex; align-items: center; gap: 2px; }
@@ -692,6 +701,55 @@ body{
 }
 .chip button:hover{ color: var(--danger); }
 .chip-empty{ font-size: 12px; color: var(--text-faint); margin-top: 6px; }
+
+/* ---------- 自訂分類：調色盤 / 計入損益勾選框 ---------- */
+.color-picker-row{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.swatch-list{ display: flex; gap: 6px; flex-wrap: wrap; flex: 1; min-width: 0; }
+.swatch{
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  padding: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.swatch.selected{ border-color: var(--text-primary); box-shadow: 0 0 0 2px var(--surface); }
+/* 滑動式調色盤（原生色彩選擇器，手機上會叫出系統的調色盤/色輪） */
+.color-well{
+  width: 34px;
+  height: 34px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.color-hex-input{ width: 92px; flex: none; text-transform: uppercase; }
+
+.checkbox-label{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.checkbox-label input[type="checkbox"]{
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
 
 @media (max-width: 460px){
   /* 手機上改用「固定畫面高度 + 內部捲動」的做法（跟大部分原生 App／

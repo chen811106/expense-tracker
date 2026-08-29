@@ -34,18 +34,23 @@
     lastTouchEnd = now;
   }, { passive: false });
 
-  /* ---------------- 支出分類設定 ---------------- */
+  /* ---------------- 支出分類設定 ----------------
+     countsTowardPL：是否計入本月支出統計／圓餅圖（損益）。目前只有
+     「調整」這種單純用來校正餘額、不是真正花費的分類預設為 false，
+     其他都預設 true。使用者也可以在「管理分類」裡針對任何分類
+     （不管內建還是自訂）另外覆寫這個設定，覆寫值存在
+     state.categoryPLOverrides，優先權比這裡的預設值高。 */
   const CATEGORIES = [
-    { key: "吃飯",        color: "var(--c-food)",    keywords: ["早餐","午餐","晚餐","消夜","宵夜","咖啡","飲料","便當","餐廳","小吃","火鍋","燒烤","飯","麵","吃","茶","星巴克","超商","熱炒","早午餐","甜點","蛋糕","滷味","食材","買菜","生鮮","菜市場","果菜","蔬菜","水果","海鮮","豬肉","雞肉","牛肉","市場","肉","蛋","菜","優格","奇亞籽","食用油","橄欖油","沙拉油","苦茶油","麻油","堅果","牛奶","起司","豆腐","雞蛋"] },
-    { key: "娛樂",        color: "var(--c-fun)",     keywords: ["電影","KTV","唱歌","展覽","演唱會","旅遊","酒吧","門票","樂園","遊戲","娛樂","景點","飯店","住宿","機票"] },
-    { key: "生活用品",     color: "var(--c-daily)",   keywords: ["衛生紙","清潔","日用品","超市","全聯","家樂福","寶雅","洗髮精","牙膏","衛生棉","生活","雜貨","文具"] },
-    { key: "油錢/停車費",  color: "var(--c-fuel)",    keywords: ["加油","停車","油錢","停車費","高速公路","ETC","過路費","機車保養","汽車保養","洗車"] },
-    { key: "交通",        color: "var(--c-transport)", keywords: ["捷運","公車","客運","火車","台鐵","高鐵","計程車","uber","Uber","悠遊卡","一卡通","電車","地鐵","轉乘","船票","公路局"] },
-    { key: "會員費用",     color: "var(--c-member)",  keywords: ["訂閱","會員","netflix","spotify","健身房","月費","年費","disney","youtube"] },
-    { key: "服飾",        color: "var(--c-clothes)", keywords: ["衣服","鞋子","包包","飾品","服飾","買衣","uniqlo","zara","gu","outlet","帽子","襪子"] },
-    { key: "奢侈品",       color: "var(--c-luxury)",  keywords: ["精品","名牌","珠寶","手錶","lv","gucci","chanel","奢侈","名錶","限量"] },
-    { key: "投資",        color: "var(--c-invest)",  keywords: ["買股","股票","定期定額","etf","基金","加碼","進場","證券","期貨","入手股","買進"] },
-    { key: "調整",        color: "var(--c-adjust)",  keywords: ["調整","校正","更正","餘額調整","結餘調整","對帳","初始餘額","期初"] }
+    { key: "吃飯",        color: "var(--c-food)",    countsTowardPL: true,  keywords: ["早餐","午餐","晚餐","消夜","宵夜","咖啡","飲料","便當","餐廳","小吃","火鍋","燒烤","飯","麵","吃","茶","星巴克","超商","熱炒","早午餐","甜點","蛋糕","滷味","食材","買菜","生鮮","菜市場","果菜","蔬菜","水果","海鮮","豬肉","雞肉","牛肉","市場","肉","蛋","菜","優格","奇亞籽","食用油","橄欖油","沙拉油","苦茶油","麻油","堅果","牛奶","起司","豆腐","雞蛋"] },
+    { key: "娛樂",        color: "var(--c-fun)",     countsTowardPL: true,  keywords: ["電影","KTV","唱歌","展覽","演唱會","旅遊","酒吧","門票","樂園","遊戲","娛樂","景點","飯店","住宿","機票"] },
+    { key: "生活用品",     color: "var(--c-daily)",   countsTowardPL: true,  keywords: ["衛生紙","清潔","日用品","超市","全聯","家樂福","寶雅","洗髮精","牙膏","衛生棉","生活","雜貨","文具"] },
+    { key: "油錢/停車費",  color: "var(--c-fuel)",    countsTowardPL: true,  keywords: ["加油","停車","油錢","停車費","高速公路","ETC","過路費","機車保養","汽車保養","洗車"] },
+    { key: "交通",        color: "var(--c-transport)", countsTowardPL: true, keywords: ["捷運","公車","客運","火車","台鐵","高鐵","計程車","uber","Uber","悠遊卡","一卡通","電車","地鐵","轉乘","船票","公路局"] },
+    { key: "會員費用",     color: "var(--c-member)",  countsTowardPL: true,  keywords: ["訂閱","會員","netflix","spotify","健身房","月費","年費","disney","youtube"] },
+    { key: "服飾",        color: "var(--c-clothes)", countsTowardPL: true,  keywords: ["衣服","鞋子","包包","飾品","服飾","買衣","uniqlo","zara","gu","outlet","帽子","襪子"] },
+    { key: "奢侈品",       color: "var(--c-luxury)",  countsTowardPL: true,  keywords: ["精品","名牌","珠寶","手錶","lv","gucci","chanel","奢侈","名錶","限量"] },
+    { key: "投資",        color: "var(--c-invest)",  countsTowardPL: true,  keywords: ["買股","股票","定期定額","etf","基金","加碼","進場","證券","期貨","入手股","買進"] },
+    { key: "調整",        color: "var(--c-adjust)",  countsTowardPL: false, keywords: ["調整","校正","更正","餘額調整","結餘調整","對帳","初始餘額","期初"] }
   ];
   // 這些是「內建」分類，程式碼更新時會調整；使用者也可以在「分類關鍵字」
   // 設定裡自行新增專屬關鍵字，或整個新增自己的分類（都存在 state 裡、
@@ -70,12 +75,12 @@
 
   /* ---------------- 收入分類設定 ---------------- */
   const INCOME_CATEGORIES = [
-    { key: "薪資收入", color: "var(--c-salary)",    keywords: ["薪水","薪資","月薪","工資","獎金","年終"] },
-    { key: "生活費",   color: "var(--c-allowance)", keywords: ["生活費","家用","零用錢","孝親費"] },
-    { key: "股利收入", color: "var(--c-dividend)",  keywords: ["股利","股息","配息","除權","除息"] },
-    { key: "投資",     color: "var(--c-invest)",    keywords: ["賣股","出場","賣出","股票","證券","期貨","獲利了結","出清"] },
-    { key: "調整",     color: "var(--c-adjust)",    keywords: ["調整","校正","更正","餘額調整","結餘調整","對帳","初始餘額","期初"] },
-    { key: "其他收入", color: "var(--c-other-income)", keywords: [] }
+    { key: "薪資收入", color: "var(--c-salary)",    countsTowardPL: true,  keywords: ["薪水","薪資","月薪","工資","獎金","年終"] },
+    { key: "生活費",   color: "var(--c-allowance)", countsTowardPL: true,  keywords: ["生活費","家用","零用錢","孝親費"] },
+    { key: "股利收入", color: "var(--c-dividend)",  countsTowardPL: true,  keywords: ["股利","股息","配息","除權","除息"] },
+    { key: "投資",     color: "var(--c-invest)",    countsTowardPL: true,  keywords: ["賣股","出場","賣出","股票","證券","期貨","獲利了結","出清"] },
+    { key: "調整",     color: "var(--c-adjust)",    countsTowardPL: false, keywords: ["調整","校正","更正","餘額調整","結餘調整","對帳","初始餘額","期初"] },
+    { key: "其他收入", color: "var(--c-other-income)", countsTowardPL: true, keywords: [] }
   ];
   const INCOME_FALLBACK_CATEGORY = "其他收入";
 
@@ -103,12 +108,34 @@
     return type === "income" ? "var(--c-other-income)" : "var(--text-faint)";
   }
 
+  // 「計入損益」＝這個分類算不算真正的支出/收入，會不會列入本月統計跟
+  // 圓餅圖。支出跟收入各自有一個「調整」分類、剛好同名，所以覆寫值要
+  // 用 type 一起當 key，不然改支出的「調整」會連收入的「調整」一起動到。
+  function categoryPLKey(category, type) {
+    return `${type}:${category}`;
+  }
+  function countsTowardPL(category, type) {
+    const overrides = state.categoryPLOverrides || {};
+    const compound = categoryPLKey(category, type);
+    if (Object.prototype.hasOwnProperty.call(overrides, compound)) return overrides[compound];
+    const cat = (type === "income" ? allIncomeCategories() : allCategories()).find(c => c.key === category);
+    if (cat && typeof cat.countsTowardPL === "boolean") return cat.countsTowardPL;
+    return true;
+  }
+
   /* ---------------- 狀態 / 儲存 ---------------- */
   const STORAGE_KEY = "healing-ledger-v1";
 
   function currentMonthKey(d) {
     const now = d || new Date();
     return now.getFullYear() + "-" + (now.getMonth() + 1);
+  }
+
+  // 把 "YYYY-M" 或 "YYYY-MM"（<input type="month"> 存出來的格式）都轉成
+  // 同一種可以互相比大小的數字，用來判斷「自動扣款到什麼時候」有沒有過期。
+  function monthKeyToValue(key) {
+    const [y, m] = String(key).split("-").map(Number);
+    return y * 12 + m;
   }
 
   function seedState() {
@@ -206,6 +233,12 @@
       // 沒有重置紀錄的舊資料：視為「這個月已經處理過」，避免一更新程式碼
       // 就把使用者已經勾選的項目重置掉
       if (!r.lastResetMonth) r.lastResetMonth = s.recurringLastResetMonth || mKey;
+      // 自動扣款相關欄位：舊資料沒有的話一律視為「手動勾選」，不會突然
+      // 幫使用者自動扣款。
+      if (typeof r.autoDeduct !== "boolean") r.autoDeduct = false;
+      if (r.autoPaymentId === undefined) r.autoPaymentId = null;
+      if (r.autoUntil === undefined) r.autoUntil = null;
+      if (r.lastTxId === undefined) r.lastTxId = null;
     });
     (s.transactions || []).forEach(t => {
       if (!t.type) t.type = "expense";
@@ -227,6 +260,13 @@
     // 以外自己想再加的類別），存在這兩個陣列裡，跟內建分類合併使用。
     if (!Array.isArray(s.customCategories)) s.customCategories = [];
     if (!Array.isArray(s.customIncomeCategories)) s.customIncomeCategories = [];
+    // 舊的自訂分類（在「是否計入損益」這個功能出現之前新增的）預設當作
+    // 一般分類，計入統計。
+    s.customCategories.forEach(c => { if (typeof c.countsTowardPL !== "boolean") c.countsTowardPL = true; });
+    s.customIncomeCategories.forEach(c => { if (typeof c.countsTowardPL !== "boolean") c.countsTowardPL = true; });
+    // 使用者針對個別分類覆寫的「是否計入損益」設定（不管內建還是自訂
+    // 分類都可以覆寫），key 是 "type:分類名稱"。
+    if (!s.categoryPLOverrides || typeof s.categoryPLOverrides !== "object") s.categoryPLOverrides = {};
 
     if (!s.categoryKeywords) s.categoryKeywords = {};
     CATEGORIES.concat(s.customCategories).forEach(c => {
@@ -326,6 +366,15 @@
   let state = loadState();
   persistLocal(state);
 
+  /* ---------------- 共用工具 ----------------
+     這幾個要放在 maybeResetRecurring／maybeCloseBillingCycle 前面：
+     它們宣告下方緊接著就會被呼叫一次，而 uid() 現在被自動扣款那段
+     邏輯用到，用 const 宣告的東西在自己那行執行之前都處在 TDZ、
+     不能提前存取，所以要先宣告好才能呼叫那兩個函式。 */
+  const fmt = new Intl.NumberFormat("zh-Hant-TW");
+  const money = (n) => "$" + fmt.format(Math.round(n));
+  const uid = () => Math.random().toString(36).slice(2, 9);
+
   /* ---------------- 每筆固定繳費各自的每月自動重置 ----------------
      只在載入當下判斷、只更動本機資料；真正發布給雲端的動作
      會等到使用者下一次實際操作（新增/刪除/勾選…）時才一併送出，
@@ -336,11 +385,34 @@
     let changed = false;
     state.recurring.forEach(r => {
       if (r.lastResetMonth !== mKey && now.getDate() >= r.resetDay) {
-        r.done = false;
-        // 上一期繳款留下的那筆交易紀錄本身不會動（是已經花掉的真實支出，
-        // 要繼續留在帳本裡），只是解除跟這個待辦項目的關聯，這樣新的一期
-        // 勾選繳款時才會另外開一筆新的紀錄，不會誤刪到上一期的。
-        r.lastTxId = null;
+        // 設定了「自動扣款」，而且還沒過「自動扣款到什麼時候」的話，
+        // 就不用等使用者手動勾選，直接在這裡記一筆支出（跟手動勾選
+        // 繳款走的是同一套帳戶/現金/信用卡連動邏輯）。
+        const autoActive = r.autoDeduct && (!r.autoUntil || monthKeyToValue(mKey) <= monthKeyToValue(r.autoUntil));
+        if (autoActive) {
+          const paymentId = r.autoPaymentId || "cash";
+          const tx = {
+            id: uid(),
+            type: "expense",
+            date: new Date(now.getFullYear(), now.getMonth(), r.resetDay).toISOString().slice(0, 10),
+            item: r.name,
+            amount: r.amount,
+            category: categorize(r.name),
+            paymentId,
+            recurringId: r.id
+          };
+          state.transactions.unshift(tx);
+          applyPaymentDelta(paymentId, tx.amount, +1);
+          r.done = true;
+          r.lastTxId = tx.id;
+        } else {
+          r.done = false;
+          // 上一期繳款留下的那筆交易紀錄本身不會動（是已經花掉的真實
+          // 支出，要繼續留在帳本裡），只是解除跟這個待辦項目的關聯，
+          // 這樣新的一期勾選繳款時才會另外開一筆新的紀錄，不會誤刪到
+          // 上一期的。
+          r.lastTxId = null;
+        }
         r.lastResetMonth = mKey;
         changed = true;
       }
@@ -372,11 +444,6 @@
     if (changed) persistLocal(state);
   }
   maybeCloseBillingCycle();
-
-  /* ---------------- 共用工具 ---------------- */
-  const fmt = new Intl.NumberFormat("zh-Hant-TW");
-  const money = (n) => "$" + fmt.format(Math.round(n));
-  const uid = () => Math.random().toString(36).slice(2, 9);
 
   function paymentLabel(id) {
     if (id === "cash") return "現金";
@@ -580,11 +647,14 @@
     const target = new Date(now.getFullYear(), now.getMonth() + offset, 1);
     const y = target.getFullYear(), m = target.getMonth();
     return state.transactions.filter(t => {
-      if (type && (t.type || "expense") !== type) return false;
-      // 調整只是拿來校正帳戶/現金餘額用的（例如手動輸入初始餘額、對帳
-      // 誤差），不是真正的花費或收入，所以本月支出/收入統計跟圓餅圖都
-      // 不列入——但金額還是會照樣影響帳戶餘額，也還是會留在最近紀錄裡。
-      if (t.category === "調整") return false;
+      const txType = t.type || "expense";
+      if (type && txType !== type) return false;
+      // 「調整」這類只是拿來校正帳戶/現金餘額用的分類（例如手動輸入
+      // 初始餘額、對帳誤差），不是真正的花費或收入，所以本月支出/收入
+      // 統計跟圓餅圖都不列入——但金額還是會照樣影響帳戶餘額，也還是會
+      // 留在最近紀錄裡。哪些分類算/不算，看 countsTowardPL()（使用者可
+      // 以在「管理分類」裡自己調整，不是只有「調整」這個分類能設定）。
+      if (!countsTowardPL(t.category, txType)) return false;
       const d = new Date(t.date);
       return d.getFullYear() === y && d.getMonth() === m;
     });
@@ -678,7 +748,7 @@
   });
 
   // 共用的甜甜圈圖繪製邏輯：傳入要更新的 DOM id 跟資料，支出／收入圖表都靠它畫
-  function renderDonutChart({ svgId, totalId, legendId, emptyId, entries }) {
+  function renderDonutChart({ svgId, totalId, legendId, emptyId, entries, type }) {
     const svg = document.getElementById(svgId);
     const legend = document.getElementById(legendId);
     const emptyEl = document.getElementById(emptyId);
@@ -711,13 +781,58 @@
       return circle;
     }).join("");
 
+    // 每一列都可以點進去看這個分類這個月的明細（哪一天花在什麼上面），
+    // 用 data-cat/data-type 記住是圖表哪一格被點的，交給
+    // openCategoryDetailModal 依照目前月份份重新查一次交易。
     legend.innerHTML = sorted.map(e => `
-      <li>
+      <li class="legend-clickable" data-cat="${escapeAttr(e.key)}" data-type="${type}">
         <span class="item-dot" style="background:${e.color}"></span>
         <span class="legend-name">${e.key}</span>
         <span class="legend-percent">${Math.round((e.value / total) * 100)}%</span>
         <span class="legend-amount">${money(e.value)}</span>
+        <span class="legend-arrow">›</span>
       </li>`).join("");
+
+    legend.querySelectorAll("[data-cat]").forEach(li => {
+      li.addEventListener("click", () => {
+        openCategoryDetailModal(li.getAttribute("data-cat"), li.getAttribute("data-type"));
+      });
+    });
+  }
+
+  // 點圓餅圖圖例某一格分類，彈出這個月（圖表目前翻到的那個月）這個
+  // 分類底下所有紀錄的明細，例如點「吃飯」就能看到 8/23 吃了什麼、
+  // 8/24 又吃了什麼，純瀏覽用，不能在這裡編輯或刪除。
+  function openCategoryDetailModal(key, type) {
+    const now = new Date();
+    const target = new Date(now.getFullYear(), now.getMonth() + chartMonthOffset, 1);
+    const monthLabel = `${target.getFullYear()} 年 ${target.getMonth() + 1} 月`;
+
+    const txs = (type === "income" ? monthTotalIncome(chartMonthOffset) : monthTotalSpend(chartMonthOffset))
+      .filter(t => t.category === key)
+      .slice()
+      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+    const total = txs.reduce((s, t) => s + t.amount, 0);
+    const isIncome = type === "income";
+
+    const rows = txs.map(t => `
+      <li class="list-item">
+        <div class="item-main">
+          <div class="item-title">${escapeHtml(t.item)}</div>
+          <div class="item-sub">${t.date} · ${paymentLabel(t.paymentId)}</div>
+        </div>
+        <div class="item-amount${isIncome ? " income" : ""}">${isIncome ? "+" : "-"}${money(t.amount)}</div>
+      </li>`).join("");
+
+    modalBody.innerHTML = `
+      <h3>${monthLabel} · ${escapeHtml(key)}</h3>
+      <p class="hint-text" style="margin:0 0 8px;">共 ${txs.length} 筆，合計 ${money(total)}</p>
+      <ul class="plain-list modal-scroll-list">${rows || `<li class="empty-hint" style="display:block;">這個月「${escapeHtml(key)}」還沒有紀錄</li>`}</ul>
+      <div class="modal-actions">
+        <button class="btn-save" id="catDetailCloseBtn" style="flex:1;">關閉</button>
+      </div>`;
+    modalOverlay.classList.add("open");
+    modalBody.querySelector("#catDetailCloseBtn").addEventListener("click", closeModal);
   }
 
   function categoryTotals(transactions) {
@@ -734,13 +849,13 @@
 
     const expenseTotals = categoryTotals(monthTotalSpend(chartMonthOffset));
     renderDonutChart({
-      svgId: "donutChart", totalId: "donutTotal", legendId: "chartLegend", emptyId: "chartEmpty",
+      svgId: "donutChart", totalId: "donutTotal", legendId: "chartLegend", emptyId: "chartEmpty", type: "expense",
       entries: allCategories().map(c => ({ key: c.key, color: c.color, value: expenseTotals[c.key] || 0 }))
     });
 
     const incomeTotals = categoryTotals(monthTotalIncome(chartMonthOffset));
     renderDonutChart({
-      svgId: "donutChartIncome", totalId: "donutTotalIncome", legendId: "chartLegendIncome", emptyId: "chartEmptyIncome",
+      svgId: "donutChartIncome", totalId: "donutTotalIncome", legendId: "chartLegendIncome", emptyId: "chartEmptyIncome", type: "income",
       entries: allIncomeCategories().map(c => ({ key: c.key, color: c.color, value: incomeTotals[c.key] || 0 }))
     });
   }
@@ -1112,19 +1227,24 @@
     const empty = document.getElementById("recurringEmpty");
     empty.style.display = state.recurring.length ? "none" : "block";
 
-    list.innerHTML = state.recurring.map(r => `
+    list.innerHTML = state.recurring.map(r => {
+      const autoNote = r.autoDeduct
+        ? `<div class="recurring-sub recurring-auto">🔁 每月 ${r.resetDay} 號自動用「${escapeHtml(paymentLabel(r.autoPaymentId))}」扣款${r.autoUntil ? `，扣到 ${escapeHtml(r.autoUntil)} 為止` : ""}</div>`
+        : `<div class="recurring-sub">每月 ${r.resetDay} 號重置為未繳納</div>`;
+      return `
       <li class="recurring-item">
         <button class="checkbox ${r.done ? "checked" : ""}" data-toggle="${r.id}" aria-label="標記完成">${r.done ? "✓" : ""}</button>
         <div class="recurring-main">
           <div class="recurring-name ${r.done ? "done" : ""}">${escapeHtml(r.name)}</div>
-          <div class="recurring-sub">每月 ${r.resetDay} 號重置為未繳納</div>
+          ${autoNote}
         </div>
         <div class="recurring-amount ${r.done ? "done" : ""}">${money(r.amount)}</div>
         <div class="recurring-actions">
           <button class="item-edit" data-edit-rec="${r.id}" aria-label="編輯">✎</button>
           <button class="item-delete" data-del-rec="${r.id}" aria-label="刪除">✕</button>
         </div>
-      </li>`).join("");
+      </li>`;
+    }).join("");
 
     list.querySelectorAll("[data-toggle]").forEach(btn => {
       btn.addEventListener("click", () => {
@@ -1222,34 +1342,94 @@
     });
   }
 
+  // 固定繳費項目要在「手動勾選」跟「自動扣款」之間切換、自動扣款還要
+  // 再多選「用什麼方式扣」跟「扣到什麼時候」，欄位會動態顯示/隱藏，
+  // 超出通用 openModal() 能處理的範圍，所以這裡跟信用卡繳款一樣自己刻
+  // modal 內容。
   function openRecurringModal(existing) {
-    openModal({
-      title: existing ? "編輯固定繳費項目" : "新增固定繳費項目",
-      fields: [
-        { key: "name", label: "項目名稱", type: "text", placeholder: "例如：房租、水電費" },
-        { key: "amount", label: "金額", type: "number", placeholder: "0" },
-        { key: "resetDay", label: "每月幾號自動重置為未繳納", type: "number", placeholder: "1" }
-      ],
-      initial: existing ? { name: existing.name, amount: existing.amount, resetDay: existing.resetDay } : null,
-      onSave: (v) => {
-        if (!v.name) return;
-        const resetDay = Math.min(28, Math.max(1, parseInt(v.resetDay) || 1));
-        if (existing) {
-          existing.name = v.name;
-          existing.amount = parseFloat(v.amount) || 0;
-          existing.resetDay = resetDay;
-        } else {
-          state.recurring.push({
-            id: uid(),
-            name: v.name,
-            amount: parseFloat(v.amount) || 0,
-            done: false,
-            resetDay,
-            lastResetMonth: currentMonthKey()
-          });
-        }
-        renderRecurring();
+    let autoDeduct = existing ? !!existing.autoDeduct : false;
+    const methodOptions = () => `<option value="cash">現金</option>` +
+      (state.accounts.length ? `<optgroup label="銀行帳戶">` + state.accounts.map(a => `<option value="${a.id}">${escapeHtml(a.name)}</option>`).join("") + `</optgroup>` : "") +
+      (state.cards.length ? `<optgroup label="信用卡">` + state.cards.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("") + `</optgroup>` : "");
+
+    modalBody.innerHTML = `
+      <h3>${existing ? "編輯固定繳費項目" : "新增固定繳費項目"}</h3>
+      <label class="field-label">項目名稱</label>
+      <input id="recName" class="text-input" placeholder="例如：房租、水電費" value="${existing ? escapeAttr(existing.name) : ""}">
+      <div class="row">
+        <div class="field">
+          <label class="field-label">金額</label>
+          <input id="recAmount" class="text-input" type="number" min="0" placeholder="0" value="${existing ? existing.amount : ""}">
+        </div>
+        <div class="field">
+          <label class="field-label">每月幾號</label>
+          <input id="recResetDay" class="text-input" type="number" min="1" max="28" placeholder="1" value="${existing ? existing.resetDay : ""}">
+        </div>
+      </div>
+      <label class="field-label">繳費方式</label>
+      <div class="type-toggle" id="recAutoToggle">
+        <button type="button" class="type-btn ${!autoDeduct ? "active" : ""}" data-auto="0">手動勾選繳款</button>
+        <button type="button" class="type-btn ${autoDeduct ? "active" : ""}" data-auto="1">自動扣款</button>
+      </div>
+      <div id="recAutoFields" ${autoDeduct ? "" : 'style="display:none;"'}>
+        <label class="field-label">用什麼方式自動扣款</label>
+        <select id="recAutoMethod" class="text-input">${methodOptions()}</select>
+        <label class="field-label">自動扣款到什麼時候（留空表示一直自動扣下去）</label>
+        <input id="recAutoUntil" class="text-input" type="month" value="${existing && existing.autoUntil ? existing.autoUntil : ""}">
+        <p class="hint-text" style="margin-top:2px;">到期後這個項目不會被刪除，只是改回「每月自己勾選繳款」。</p>
+      </div>
+      <p class="hint-text" id="recHint"></p>
+      <div class="modal-actions">
+        <button class="btn-cancel" id="recCancelBtn">取消</button>
+        <button class="btn-save" id="recSaveBtn">儲存</button>
+      </div>`;
+    modalOverlay.classList.add("open");
+
+    if (existing && existing.autoPaymentId) {
+      modalBody.querySelector("#recAutoMethod").value = existing.autoPaymentId;
+    }
+
+    modalBody.querySelector("#recAutoToggle").addEventListener("click", (e) => {
+      const btn = e.target.closest(".type-btn");
+      if (!btn) return;
+      autoDeduct = btn.getAttribute("data-auto") === "1";
+      modalBody.querySelector("#recAutoToggle").querySelectorAll(".type-btn").forEach(b => b.classList.toggle("active", b === btn));
+      modalBody.querySelector("#recAutoFields").style.display = autoDeduct ? "" : "none";
+    });
+
+    modalBody.querySelector("#recCancelBtn").addEventListener("click", closeModal);
+    modalBody.querySelector("#recSaveBtn").addEventListener("click", () => {
+      const name = modalBody.querySelector("#recName").value.trim();
+      const amount = parseFloat(modalBody.querySelector("#recAmount").value);
+      const resetDay = Math.min(28, Math.max(1, parseInt(modalBody.querySelector("#recResetDay").value) || 1));
+      const hint = modalBody.querySelector("#recHint");
+      if (!name) { hint.textContent = "請輸入項目名稱"; return; }
+      if (!amount || amount <= 0) { hint.textContent = "請輸入有效金額"; return; }
+
+      const autoPaymentId = autoDeduct ? modalBody.querySelector("#recAutoMethod").value : null;
+      const autoUntil = autoDeduct ? (modalBody.querySelector("#recAutoUntil").value || null) : null;
+
+      if (existing) {
+        existing.name = name;
+        existing.amount = amount;
+        existing.resetDay = resetDay;
+        existing.autoDeduct = autoDeduct;
+        existing.autoPaymentId = autoPaymentId;
+        existing.autoUntil = autoUntil;
+      } else {
+        state.recurring.push({
+          id: uid(),
+          name, amount,
+          done: false,
+          resetDay,
+          lastResetMonth: currentMonthKey(),
+          autoDeduct, autoPaymentId, autoUntil,
+          lastTxId: null
+        });
       }
+      closeModal();
+      renderRecurring();
+      saveState(state);
     });
   }
 
@@ -1307,6 +1487,7 @@
 
   function openCategoryManager() {
     let kwType = "expense";
+    let newCategoryColor = CUSTOM_CATEGORY_PALETTE[0];
 
     modalBody.innerHTML = `
       <h3>管理分類</h3>
@@ -1316,7 +1497,7 @@
       </div>
       <label class="field-label">選擇分類</label>
       <select id="kwCategorySelect" class="text-input"></select>
-      <div id="kwCustomCategoryActions"></div>
+      <div id="kwCategorySettings"></div>
       <div class="field-label" style="margin-top:14px;">系統預設關鍵字</div>
       <div class="chip-list" id="kwDefaultChips"></div>
       <div class="field-label" style="margin-top:14px;">我新增的關鍵字</div>
@@ -1330,6 +1511,16 @@
         <input id="kwNewCategoryInput" class="text-input" placeholder="例如：交通、寵物">
         <button class="add-mini" id="kwAddCategoryBtn" style="white-space:nowrap;">新增分類</button>
       </div>
+      <label class="field-label">分類顏色</label>
+      <div class="color-picker-row">
+        <div class="swatch-list" id="kwSwatchList"></div>
+        <input type="color" id="kwColorPicker" class="color-well" value="${newCategoryColor}" title="用滑動式調色盤自訂顏色">
+        <input type="text" id="kwColorHex" class="text-input color-hex-input" placeholder="#RRGGBB" maxlength="7" value="${newCategoryColor}">
+      </div>
+      <label class="checkbox-label">
+        <input type="checkbox" id="kwNewCategoryPL" checked>
+        <span>計入本月支出/收入統計（損益）</span>
+      </label>
       <p class="hint-text" id="kwNewCategoryHint"></p>
       <div class="modal-actions">
         <button class="btn-save" id="kwDone" style="flex:1;">完成</button>
@@ -1338,12 +1529,16 @@
 
     const kwTypeToggle = modalBody.querySelector("#kwType");
     const categorySelect = modalBody.querySelector("#kwCategorySelect");
-    const customActionsEl = modalBody.querySelector("#kwCustomCategoryActions");
+    const settingsEl = modalBody.querySelector("#kwCategorySettings");
     const defaultChipsEl = modalBody.querySelector("#kwDefaultChips");
     const customChipsEl = modalBody.querySelector("#kwCustomChips");
     const newInput = modalBody.querySelector("#kwNewInput");
     const newCategoryInput = modalBody.querySelector("#kwNewCategoryInput");
     const newCategoryHint = modalBody.querySelector("#kwNewCategoryHint");
+    const swatchListEl = modalBody.querySelector("#kwSwatchList");
+    const colorPicker = modalBody.querySelector("#kwColorPicker");
+    const colorHex = modalBody.querySelector("#kwColorHex");
+    const newCategoryPLCheckbox = modalBody.querySelector("#kwNewCategoryPL");
 
     function categoryList() {
       return kwType === "income" ? allIncomeCategories() : allCategories();
@@ -1359,25 +1554,100 @@
       categorySelect.innerHTML = categoryList().map(c => `<option value="${c.key}">${c.key}</option>`).join("");
     }
 
-    // 自己新增的分類才會顯示「刪除這個分類」；內建分類不能刪，只能管理
-    // 關鍵字。刪掉分類只是拿掉這個選項，過去已經歸類進去的紀錄不會被
-    // 刪除，分類名稱會照樣顯示，只是之後不會再被自動分類選到。
-    function renderCustomActions() {
+    // 新增分類要選色的色盤：一排固定的莫蘭迪色票，點一下就選定，選中的
+    // 那個會有外框標示；跟旁邊的滑動式調色盤（<input type="color">）跟
+    // 手動輸入色號的文字框三個互相同步，不管用哪一種方式選，另外兩個
+    // 都會跟著更新。
+    function renderSwatches() {
+      swatchListEl.innerHTML = CUSTOM_CATEGORY_PALETTE.map(c => `
+        <button type="button" class="swatch ${c.toLowerCase() === newCategoryColor.toLowerCase() ? "selected" : ""}" data-color="${c}" style="background:${c};" aria-label="選擇顏色 ${c}"></button>
+      `).join("");
+      swatchListEl.querySelectorAll("[data-color]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          newCategoryColor = btn.getAttribute("data-color");
+          colorPicker.value = newCategoryColor;
+          colorHex.value = newCategoryColor;
+          renderSwatches();
+        });
+      });
+    }
+
+    colorPicker.addEventListener("input", () => {
+      newCategoryColor = colorPicker.value;
+      colorHex.value = newCategoryColor;
+      renderSwatches();
+    });
+    colorHex.addEventListener("input", () => {
+      const v = colorHex.value.trim();
+      if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+        newCategoryColor = v;
+        colorPicker.value = v;
+        renderSwatches();
+      }
+    });
+
+    // 選好的分類（不管內建還是自訂）都可以在這裡調整「計入損益」；
+    // 自訂分類另外多了改顏色跟刪除分類的功能——內建分類的顏色是寫死
+    // 在 CSS 色票裡的莫蘭迪主色，維持整體配色一致，不開放更改。
+    function renderCategorySettings() {
       const key = categorySelect.value;
+      const cat = categoryList().find(c => c.key === key);
+      if (!cat) { settingsEl.innerHTML = ""; return; }
       const isCustom = customCategoryList().some(c => c.key === key);
-      customActionsEl.innerHTML = isCustom
-        ? `<button class="add-mini secondary" id="kwDeleteCategoryBtn" style="margin-top:8px;">🗑 刪除「${escapeHtml(key)}」這個自訂分類</button>`
-        : "";
+      const pl = countsTowardPL(key, kwType);
+
+      let html = `
+        <label class="checkbox-label" style="margin-top:10px;">
+          <input type="checkbox" id="kwPLToggle" ${pl ? "checked" : ""}>
+          <span>計入本月支出/收入統計（損益）</span>
+        </label>`;
       if (isCustom) {
-        customActionsEl.querySelector("#kwDeleteCategoryBtn").addEventListener("click", () => {
+        html += `
+          <label class="field-label">分類顏色</label>
+          <div class="color-picker-row">
+            <input type="color" id="kwEditColorPicker" class="color-well" value="${cat.color}">
+            <input type="text" id="kwEditColorHex" class="text-input color-hex-input" maxlength="7" value="${cat.color}">
+          </div>
+          <button class="add-mini secondary" id="kwDeleteCategoryBtn" style="margin-top:10px;">🗑 刪除「${escapeHtml(key)}」這個自訂分類</button>`;
+      }
+      settingsEl.innerHTML = html;
+
+      settingsEl.querySelector("#kwPLToggle").addEventListener("change", (e) => {
+        if (!state.categoryPLOverrides) state.categoryPLOverrides = {};
+        state.categoryPLOverrides[categoryPLKey(key, kwType)] = e.target.checked;
+        saveState(state);
+        renderChart();
+        renderHome();
+      });
+
+      if (isCustom) {
+        const editPicker = settingsEl.querySelector("#kwEditColorPicker");
+        const editHex = settingsEl.querySelector("#kwEditColorHex");
+        editPicker.addEventListener("input", () => {
+          cat.color = editPicker.value;
+          editHex.value = editPicker.value;
+          saveState(state);
+          renderChart();
+        });
+        editHex.addEventListener("input", () => {
+          const v = editHex.value.trim();
+          if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+            cat.color = v;
+            editPicker.value = v;
+            saveState(state);
+            renderChart();
+          }
+        });
+        settingsEl.querySelector("#kwDeleteCategoryBtn").addEventListener("click", () => {
           const list = customCategoryList();
           const idx = list.findIndex(c => c.key === key);
           if (idx !== -1) list.splice(idx, 1);
           renderCategorySelect();
-          renderCustomActions();
+          renderCategorySettings();
           renderChips();
           saveState(state);
           renderChart();
+          renderHome();
         });
       }
     }
@@ -1410,12 +1680,12 @@
       kwType = btn.getAttribute("data-type");
       kwTypeToggle.querySelectorAll(".type-btn").forEach(b => b.classList.toggle("active", b === btn));
       renderCategorySelect();
-      renderCustomActions();
+      renderCategorySettings();
       renderChips();
     });
 
     categorySelect.addEventListener("change", () => {
-      renderCustomActions();
+      renderCategorySettings();
       renderChips();
     });
 
@@ -1435,8 +1705,9 @@
       if (e.key === "Enter") { e.preventDefault(); modalBody.querySelector("#kwAddBtn").click(); }
     });
 
-    // 新增一整個分類（不是關鍵字）：給名稱、自動配一個色票裡的顏色，
-    // 加進去之後直接選到它，方便馬上接著幫它加關鍵字。
+    // 新增一整個分類（不是關鍵字）：給名稱、用色盤/調色盤/色號選好的
+    // 顏色、要不要計入損益，加進去之後直接選到它，方便馬上接著幫它加
+    // 關鍵字。
     modalBody.querySelector("#kwAddCategoryBtn").addEventListener("click", () => {
       const name = newCategoryInput.value.trim();
       if (!name) return;
@@ -1445,14 +1716,20 @@
         return;
       }
       const list = customCategoryList();
-      const color = CUSTOM_CATEGORY_PALETTE[list.length % CUSTOM_CATEGORY_PALETTE.length];
-      list.push({ key: name, color, keywords: [] });
+      const pl = newCategoryPLCheckbox.checked;
+      list.push({ key: name, color: newCategoryColor, keywords: [], countsTowardPL: pl });
       customStore()[name] = [];
       newCategoryInput.value = "";
       newCategoryHint.textContent = "";
+      // 下一個新分類預設顏色換下一個色票，選過的顏色不會一直重複。
+      newCategoryColor = CUSTOM_CATEGORY_PALETTE[list.length % CUSTOM_CATEGORY_PALETTE.length];
+      colorPicker.value = newCategoryColor;
+      colorHex.value = newCategoryColor;
+      newCategoryPLCheckbox.checked = true;
+      renderSwatches();
       renderCategorySelect();
       categorySelect.value = name;
-      renderCustomActions();
+      renderCategorySettings();
       renderChips();
       saveState(state);
       renderChart();
@@ -1465,7 +1742,8 @@
     modalBody.querySelector("#kwDone").addEventListener("click", closeModal);
 
     renderCategorySelect();
-    renderCustomActions();
+    renderSwatches();
+    renderCategorySettings();
     renderChips();
   }
 
