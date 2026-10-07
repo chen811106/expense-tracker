@@ -519,6 +519,17 @@
 
   let entryType = "expense"; // 'expense' | 'income'
 
+  // 發布到雲端時會把當下整個畫面（含這個切換鈕目前反白在哪一顆）一起
+  // 存起來；如果剛好是停在「收入」反白時存出去的，下次重新打開（甚至
+  // 是別人打開同一個連結）畫面會停留在「收入」反白，但這個 entryType
+  // 變數每次都是從 "expense" 重新開始，兩邊會對不起來——使用者看著
+  // 畫面以為選的是收入，實際記下去的卻是支出，才會出現「選收入、按
+  // 下去金額卻變成負的」這種情況。這裡主動把畫面同步回「支出」，
+  // 不要相信存起來的畫面外觀，每次載入都強制從支出開始。
+  typeToggle.querySelectorAll(".type-btn").forEach(b =>
+    b.classList.toggle("active", b.getAttribute("data-type") === entryType)
+  );
+
   typeToggle.addEventListener("click", (e) => {
     const btn = e.target.closest(".type-btn");
     if (!btn) return;
@@ -682,6 +693,103 @@
     });
   }
 
+  // 編輯一筆既有的支出/收入紀錄：項目、金額、支付方式、日期，甚至
+  // 類型（支出↔收入）都能直接改，不用刪掉重新輸入。轉帳跟信用卡繳款
+  // 結構不一樣，不透過這裡編輯，維持原本只能刪除。
+  // onAfterChange：存檔後要額外做的事——首頁自己的列表存檔時
+  // renderHome() 已經會重畫，不用額外處理；歷史紀錄 modal 則是要
+  // 整個重新開一次，列表才會跟著最新資料更新。
+  function openTxEditModal(tx, onAfterChange) {
+    let editType = tx.type;
+
+    modalBody.innerHTML = `
+      <h3>編輯紀錄</h3>
+      <div class="type-toggle" id="txEditType">
+        <button type="button" class="type-btn ${editType === "expense" ? "active" : ""}" data-type="expense">支出</button>
+        <button type="button" class="type-btn ${editType === "income" ? "active" : ""}" data-type="income">收入</button>
+      </div>
+      <label class="field-label" id="txEditItemLabel">${editType === "income" ? "收入項目" : "花費項目"}</label>
+      <input id="txEditItem" class="text-input" value="${escapeAttr(tx.item)}">
+      <div class="row">
+        <div class="field">
+          <label class="field-label">金額</label>
+          <input id="txEditAmount" class="text-input" type="number" min="0" value="${tx.amount}">
+        </div>
+        <div class="field">
+          <label class="field-label" id="txEditPaymentLabel">${editType === "income" ? "存入帳戶" : "支付方式"}</label>
+          <select id="txEditPayment" class="text-input"></select>
+        </div>
+      </div>
+      <label class="field-label">日期</label>
+      <input id="txEditDate" class="text-input" type="date" value="${tx.date}">
+      <p class="hint-text" id="txEditHint"></p>
+      <div class="modal-actions">
+        <button class="btn-cancel" id="txEditCancelBtn">取消</button>
+        <button class="btn-save" id="txEditSaveBtn">儲存</button>
+      </div>`;
+    modalOverlay.classList.add("open");
+
+    const paymentSelectEl = modalBody.querySelector("#txEditPayment");
+    renderPaymentOptions(paymentSelectEl, { excludeCards: editType === "income" });
+    paymentSelectEl.value = tx.paymentId;
+
+    modalBody.querySelector("#txEditType").addEventListener("click", (e) => {
+      const btn = e.target.closest(".type-btn");
+      if (!btn) return;
+      editType = btn.getAttribute("data-type");
+      modalBody.querySelector("#txEditType").querySelectorAll(".type-btn").forEach(b => b.classList.toggle("active", b === btn));
+      modalBody.querySelector("#txEditItemLabel").textContent = editType === "income" ? "收入項目" : "花費項目";
+      modalBody.querySelector("#txEditPaymentLabel").textContent = editType === "income" ? "存入帳戶" : "支付方式";
+      renderPaymentOptions(paymentSelectEl, { excludeCards: editType === "income" });
+    });
+
+    modalBody.querySelector("#txEditCancelBtn").addEventListener("click", closeModal);
+    modalBody.querySelector("#txEditSaveBtn").addEventListener("click", () => {
+      const item = modalBody.querySelector("#txEditItem").value.trim();
+      const amount = parseFloat(modalBody.querySelector("#txEditAmount").value);
+      const paymentId = paymentSelectEl.value;
+      const date = modalBody.querySelector("#txEditDate").value;
+      const hint = modalBody.querySelector("#txEditHint");
+      if (!item) { hint.textContent = editType === "income" ? "請輸入收入項目" : "請輸入花費項目"; return; }
+      if (!amount || amount <= 0) { hint.textContent = "請輸入有效金額"; return; }
+      if (!date) { hint.textContent = "請選擇日期"; return; }
+
+      // 先把這筆紀錄原本對帳戶/現金造成的影響還原，再用改好的內容
+      // 重新套用一次——效果等於刪除後重新記一筆，只是不用使用者
+      // 自己動手刪了重打。
+      applyPaymentDelta(tx.paymentId, tx.amount, tx.type === "income" ? +1 : -1);
+
+      tx.type = editType;
+      tx.item = item;
+      tx.amount = amount;
+      tx.paymentId = paymentId;
+      tx.date = date;
+      tx.category = editType === "income" ? categorizeIncome(item) : categorize(item);
+
+      applyPaymentDelta(paymentId, amount, editType === "expense" ? +1 : -1);
+
+      closeModal();
+      renderHome(); renderChart(); renderAccounts(); renderCards(); renderWaterLevel();
+      saveState(state);
+      if (onAfterChange) onAfterChange();
+    });
+  }
+
+  // 完整歷史記帳紀錄：首頁「最近紀錄」只列出最新 8 筆，這裡列出全部，
+  // 一樣可以直接編輯／刪除，不用為了修正打錯的一筆資料去翻匯出文字。
+  function openHistoryModal() {
+    modalBody.innerHTML = `
+      <h3>歷史記帳紀錄</h3>
+      <p class="hint-text" style="margin:0 0 8px;">共 ${state.transactions.length} 筆，點 ✎ 可以直接修改內容（例如不小心把收入記成支出），不用刪掉重新輸入。</p>
+      <ul class="plain-list modal-scroll-list" id="historyList">${state.transactions.map(txRowHtml).join("") || `<li class="empty-hint" style="display:block;">還沒有任何紀錄</li>`}</ul>
+      <div class="modal-actions">
+        <button class="btn-save" id="historyCloseBtn" style="flex:1;">關閉</button>
+      </div>`;
+    modalOverlay.classList.add("open");
+    wireTxRowButtons(modalBody, openHistoryModal);
+    modalBody.querySelector("#historyCloseBtn").addEventListener("click", closeModal);
+  }
+
   function monthTransactions(offset, type) {
     const now = new Date();
     const target = new Date(now.getFullYear(), now.getMonth() + offset, 1);
@@ -718,48 +826,67 @@
     const empty = document.getElementById("recentEmpty");
     const recent = state.transactions.slice(0, 8);
     empty.style.display = recent.length ? "none" : "block";
-    list.innerHTML = recent.map(t => {
-      if (t.type === "transfer") {
-        return `
-          <li class="list-item">
-            <span class="item-dot" style="background:var(--c-adjust)"></span>
-            <div class="item-main">
-              <div class="item-title">${escapeHtml(t.item)}</div>
-              <div class="item-sub">${t.date} · 從 ${paymentLabel(t.fromAccountId)} 轉到 ${paymentLabel(t.toAccountId)}</div>
-            </div>
-            <div class="item-amount">⇄ ${money(t.amount)}</div>
-            <button class="item-delete" data-del="${t.id}" aria-label="刪除">✕</button>
-          </li>`;
-      }
-      if (t.type === "cardpayment") {
-        const card = state.cards.find(c => c.id === t.cardId);
-        const cardName = card ? card.name : "未知信用卡";
-        return `
-          <li class="list-item">
-            <span class="item-dot" style="background:var(--c-adjust)"></span>
-            <div class="item-main">
-              <div class="item-title">${escapeHtml(cardName)} 繳款</div>
-              <div class="item-sub">${t.date} · 用 ${paymentLabel(t.paymentId)} 支付</div>
-            </div>
-            <div class="item-amount">💳 ${money(t.amount)}</div>
-            <button class="item-delete" data-del="${t.id}" aria-label="刪除">✕</button>
-          </li>`;
-      }
-      const color = categoryColor(t.category, t.type);
-      const isIncome = t.type === "income";
+    list.innerHTML = recent.map(txRowHtml).join("");
+    wireTxRowButtons(list);
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+  }
+
+  // 一筆交易紀錄的列表項目 HTML，首頁「最近紀錄」跟「歷史記帳紀錄」
+  // 共用同一份，不用維護兩份幾乎一樣的樣板。轉帳／信用卡繳款結構跟
+  // 一般支出/收入不一樣，只能刪除；一般支出/收入多一個「編輯」按鈕，
+  // 不用刪掉重新輸入就能直接修改金額、項目、支付方式，甚至改成
+  // 支出/收入互相修正打錯的類型。
+  function txRowHtml(t) {
+    if (t.type === "transfer") {
       return `
         <li class="list-item">
-          <span class="item-dot" style="background:${color}"></span>
+          <span class="item-dot" style="background:var(--c-adjust)"></span>
           <div class="item-main">
             <div class="item-title">${escapeHtml(t.item)}</div>
-            <div class="item-sub">${t.date} · ${t.category} · ${paymentLabel(t.paymentId)}</div>
+            <div class="item-sub">${t.date} · 從 ${paymentLabel(t.fromAccountId)} 轉到 ${paymentLabel(t.toAccountId)}</div>
           </div>
-          <div class="item-amount${isIncome ? " income" : ""}">${isIncome ? "+" : "-"}${money(t.amount)}</div>
+          <div class="item-amount">⇄ ${money(t.amount)}</div>
           <button class="item-delete" data-del="${t.id}" aria-label="刪除">✕</button>
         </li>`;
-    }).join("");
+    }
+    if (t.type === "cardpayment") {
+      const card = state.cards.find(c => c.id === t.cardId);
+      const cardName = card ? card.name : "未知信用卡";
+      return `
+        <li class="list-item">
+          <span class="item-dot" style="background:var(--c-adjust)"></span>
+          <div class="item-main">
+            <div class="item-title">${escapeHtml(cardName)} 繳款</div>
+            <div class="item-sub">${t.date} · 用 ${paymentLabel(t.paymentId)} 支付</div>
+          </div>
+          <div class="item-amount">💳 ${money(t.amount)}</div>
+          <button class="item-delete" data-del="${t.id}" aria-label="刪除">✕</button>
+        </li>`;
+    }
+    const color = categoryColor(t.category, t.type);
+    const isIncome = t.type === "income";
+    return `
+      <li class="list-item">
+        <span class="item-dot" style="background:${color}"></span>
+        <div class="item-main">
+          <div class="item-title">${escapeHtml(t.item)}</div>
+          <div class="item-sub">${t.date} · ${t.category} · ${paymentLabel(t.paymentId)}</div>
+        </div>
+        <div class="item-amount${isIncome ? " income" : ""}">${isIncome ? "+" : "-"}${money(t.amount)}</div>
+        <button class="item-edit" data-edit="${t.id}" aria-label="編輯">✎</button>
+        <button class="item-delete" data-del="${t.id}" aria-label="刪除">✕</button>
+      </li>`;
+  }
 
-    list.querySelectorAll("[data-del]").forEach(btn => {
+  // 幫傳進來的容器（首頁最近紀錄的 <ul>，或歷史紀錄 modal 裡的 <ul>）
+  // 裡所有 txRowHtml() 產生出來的編輯／刪除按鈕掛上事件。onAfterChange
+  // 讓呼叫端決定存檔後要怎麼重新整理畫面（首頁是重畫自己，歷史紀錄
+  // modal 則是整個重新開一次，列表才會跟著最新資料更新）。
+  function wireTxRowButtons(container, onAfterChange) {
+    container.querySelectorAll("[data-del]").forEach(btn => {
       btn.addEventListener("click", () => {
         const id = btn.getAttribute("data-del");
         const tx = state.transactions.find(t => t.id === id);
@@ -769,13 +896,19 @@
           : tx.type === "cardpayment"
           ? `這筆信用卡繳款紀錄（💳 ${money(tx.amount)}）刪除後無法復原，支付帳戶的餘額跟信用卡的本期應繳金額都會還原。`
           : `「${escapeHtml(tx.item)}」${tx.type === "income" ? "+" : "-"}${money(tx.amount)} 這筆紀錄刪除後無法復原。`;
-        confirmDelete(desc, () => deleteTransaction(id));
+        confirmDelete(desc, () => {
+          deleteTransaction(id);
+          if (onAfterChange) onAfterChange();
+        });
       });
     });
-  }
-
-  function escapeHtml(s) {
-    return s.replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+    container.querySelectorAll("[data-edit]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const id = btn.getAttribute("data-edit");
+        const tx = state.transactions.find(t => t.id === id);
+        if (tx) openTxEditModal(tx, onAfterChange);
+      });
+    });
   }
 
   /* ================= 圖表（支出／收入各一個圓餅圖，共用同一個月份） ================= */
@@ -1134,6 +1267,7 @@
     return lines.join("\n").trim() + "\n";
   }
 
+  document.getElementById("historyBtn").addEventListener("click", openHistoryModal);
   document.getElementById("exportBtn").addEventListener("click", openExportModal);
 
   function openExportModal() {
@@ -2222,6 +2356,7 @@
           <li>「現金」固定釘在最上面、不能刪除，點編輯可以直接調整目前現金餘額</li>
           <li>可以新增多個銀行帳戶，帳戶之間可以互轉（不算支出也不算收入）</li>
           <li>「資料管理」：把記帳紀錄整理成文字複製保存，也可以在保存好之後清空舊紀錄（帳戶、卡片、待辦、分類設定都不會被清掉）；建議每 3 個月備份一次，也別清瀏覽器快取</li>
+          <li>「📜 歷史記帳紀錄」列出全部紀錄，點 ✎ 可以直接修改項目、金額、支付方式、日期，甚至把不小心記錯的支出/收入互改，不用刪掉重新輸入</li>
         </ul>
 
         <h4>💳 信用卡</h4>
