@@ -30,6 +30,7 @@
   --c-allowance: #A3B08A; /* 生活費 - 抹茶綠 */
   --c-dividend: #B8AA6B;  /* 股利收入 - 燕麥金綠 */
   --c-other-income: #9CADA0; /* 其他收入 - 灰綠 */
+  --c-reimburse: #9C8FAE;    /* 代墊款收入 - 霧灰紫，跟調整/投資區分開 */
 
   /* 功能色 */
   --accent: #B98C7D;

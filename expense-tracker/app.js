@@ -82,13 +82,23 @@
     return FALLBACK_CATEGORY;
   }
 
-  /* ---------------- 收入分類設定 ---------------- */
+  /* ---------------- 收入分類設定 ----------------
+     「代墊款收入」：先替別人代墊費用，之後對方把錢還回來，本質是拿回
+     自己先墊出去的錢，不是真正賺到的收入——跟「調整」一樣用
+     countsTowardPL:false 排除在一般收入統計之外，也額外列在下面的
+     LIFE_EXCLUDED_CATEGORIES（生活收支統計）裡；可以用 reimburseFor
+     欄位指定要抵減哪個生活支出分類，在 computeLifeStats() 裡用來做
+     淨額計算（細節見該函式的註解）。 */
   const INCOME_CATEGORIES = [
     { key: "薪資收入", color: "var(--c-salary)",    countsTowardPL: true,  keywords: ["薪水","薪資","月薪","工資","獎金","年終"] },
     { key: "生活費",   color: "var(--c-allowance)", countsTowardPL: true,  keywords: ["生活費","家用","零用錢","孝親費"] },
     { key: "股利收入", color: "var(--c-dividend)",  countsTowardPL: true,  keywords: ["股利","股息","配息","除權","除息"] },
     { key: "投資",     color: "var(--c-invest)",    countsTowardPL: true,  keywords: ["賣股","出場","賣出","股票","證券","期貨","獲利了結","出清"] },
     { key: "調整",     color: "var(--c-adjust)",    countsTowardPL: false, keywords: ["調整","校正","更正","餘額調整","結餘調整","對帳","初始餘額","期初"] },
+    { key: "代墊款收入", color: "var(--c-reimburse)", countsTowardPL: false, keywords: [
+        "代墊款收入","代墊款回收","代墊款歸還","代墊還款","朋友還款","同事還款","家人還款","幫付還款","代付還款",
+        "還款","還我","還錢","給款","給我錢","錢還我","歸還","返還","補款","退還代墊","代墊","代付"
+      ] },
     { key: "其他收入", color: "var(--c-other-income)", countsTowardPL: true, keywords: [] }
   ];
   const INCOME_FALLBACK_CATEGORY = "其他收入";
@@ -97,39 +107,44 @@
     return INCOME_CATEGORIES.concat(state.customIncomeCategories || []);
   }
 
-  function categorizeIncome(text) {
+  // 「代墊款收入」的關鍵字（還款／給款／歸還…）語意比較模糊，可能跟
+  // 信用卡、貸款的還款搞混，所以這些排除關鍵字的優先級設得比「代墊款
+  // 收入」關鍵字更高：文字裡只要出現任何一個，就不會被判斷成代墊款
+  // 收入（退款／退貨退款等商品退款情境也排除，沿用原本就會落到「其他
+  // 收入」的 fallback，不另外建立退款分類）。
+  const REIMBURSE_INCOME_EXCLUDE_KEYWORDS = [
+    "信用卡","卡費","貸款","房貸","車貸","學貸","借款","分期","融資",
+    "保證金退還","商品退款","訂單退款","退貨退款"
+  ];
+
+  // opts.skip：呼叫端想略過某個分類時使用（例如使用者手動把「代墊款
+  // 收入」勾選框取消掉時，不該讓關鍵字又把它判回代墊款收入）。跟
+  // categorize() 一樣，「投資」（含「期貨」）優先判斷；「代墊款收入」
+  // 次之，且要先確認沒有命中排除關鍵字才判斷，確保「信用卡還款」
+  // 「房貸還款」不會被「還款」這個泛用關鍵字誤判走。
+  function categorizeIncome(text, opts) {
     if (!text) return null;
     const t = text.toLowerCase();
-    // 跟 categorize() 一樣，「投資」（含「期貨」）優先判斷，賣股票/期貨
-    // 出金/保證金轉回這類資金流入不能被其他收入分類搶先比對走。
+    const skip = (opts && opts.skip) || [];
     const investCat = allIncomeCategories().find(c => c.key === "投資");
-    if (investCat) {
+    if (investCat && !skip.includes("投資")) {
       const customInvest = (state.incomeCategoryKeywords && state.incomeCategoryKeywords["投資"]) || [];
       if (investCat.keywords.concat(customInvest).some(k => t.includes(k.toLowerCase()))) return "投資";
     }
+    const reimburseCat = allIncomeCategories().find(c => c.key === "代墊款收入");
+    if (reimburseCat && !skip.includes("代墊款收入") && !REIMBURSE_INCOME_EXCLUDE_KEYWORDS.some(k => t.includes(k.toLowerCase()))) {
+      const customReimburse = (state.incomeCategoryKeywords && state.incomeCategoryKeywords["代墊款收入"]) || [];
+      if (reimburseCat.keywords.concat(customReimburse).some(k => t.includes(k.toLowerCase()))) return "代墊款收入";
+    }
     for (const cat of allIncomeCategories()) {
-      if (cat.key === "投資") continue;
+      if (cat.key === "投資" || cat.key === "代墊款收入") continue;
       const custom = (state.incomeCategoryKeywords && state.incomeCategoryKeywords[cat.key]) || [];
       if (cat.keywords.concat(custom).some(k => t.includes(k.toLowerCase()))) return cat.key;
     }
     return INCOME_FALLBACK_CATEGORY;
   }
 
-  // 「代墊款回收」：跟朋友分攤花費，對方把錢還給你時記的這一筆，本質是
-  // 拿回之前自己代墊出去的錢，不是真正的收入。只有「還款」兩個字單獨
-  // 出現時可能也代表還貸款／還信用卡，但這個 App 裡信用卡繳款走的是
-  // 獨立的「✓ 已繳款」流程（itemText 固定是「OO卡 繳款」，不是用這裡的
-  // 關鍵字比對機制），目前也沒有貸款功能，所以「還款」在這個 App 裡
-  // 不會跟既有功能衝突；仍然把語意更明確的「代墊還款」「朋友還款」
-  // 「代墊款回收」放前面，比對到任何一個就視為代墊款回收。
-  const REIMBURSEMENT_KEYWORDS = ["代墊款回收", "代墊還款", "代墊款", "代墊", "朋友還款", "還款"];
-  function detectReimbursement(text) {
-    if (!text) return false;
-    const t = text.toLowerCase();
-    return REIMBURSEMENT_KEYWORDS.some(k => t.includes(k.toLowerCase()));
-  }
-
-  // 代墊款回收可以指定「抵減哪個生活支出分類」，選項只能是一般生活
+  // 「代墊款收入」可以指定「抵減哪個生活支出分類」，選項只能是一般生活
   // 分類，不能選投資或調整——這兩個本來就是分開統計的，不該被代墊款
   // 影響。
   function lifeExpenseCategories() {
@@ -280,17 +295,24 @@
     });
     (s.transactions || []).forEach(t => {
       if (!t.type) t.type = "expense";
-      // 代墊款回收：只在欄位完全不存在時（第一次遷移）才自動判斷，
-      // 用現有的關鍵字規則掃過去舊的收入項目文字（例如「Jerry還款」），
-      // 掃到就標記為代墊款回收、抵減分類留白（未指定），之後會在首頁
-      // 看到提醒，使用者自己補選要抵減哪個分類；一旦這個欄位確定存在
-      // 過（不管 true 還是 false），之後絕不再自動覆蓋，使用者手動
-      // 取消勾選的紀錄不會被下次載入時打回原狀。
-      if (t.isReimbursement === undefined) {
-        t.isReimbursement = t.type === "income" && detectReimbursement(t.item);
-      }
       if (t.reimburseFor === undefined) t.reimburseFor = null;
+      // 舊版本用「其他收入」分類 + isReimbursement 旗標代表代墊款收入，
+      // 現在改成一個真正的分類「代墊款收入」。這裡只處理「之前就已經
+      // 明確判定過是代墊款」的舊紀錄（isReimbursement === true，來自
+      // 更早一版遷移時掃關鍵字、或使用者自己勾選過的結果），直接把
+      // 分類接上新分類，不是重新猜測；分類一旦等於「代墊款收入」，這個
+      // 條件就不會再成立，所以每次載入重複執行也不會有副作用。
+      if (t.isReimbursement === true && t.category !== "代墊款收入") {
+        t.category = "代墊款收入";
+      }
     });
+    // 「其他收入」裡可能還有一些沒被上面那段處理到的舊紀錄（從來沒被
+    // 標記過 isReimbursement，但文字其實看起來像代墊款收入，例如使用者
+    // 當初手動打成「其他收入」、沒有勾過任何東西）——這些不自動改，只
+    // 列出來讓使用者自己確認／批次套用（見 findReimburseReviewCandidates()
+    // 跟「資料管理」裡的「檢查可能的代墊款收入」按鈕），使用者選擇忽略
+    // 的紀錄 id 記在這裡，之後不會再被列出來打擾。
+    if (!Array.isArray(s.reimburseReviewDismissedIds)) s.reimburseReviewDismissedIds = [];
     // 信用卡：把「本期應繳金額」（statementAmount，結帳日已鎖定、等
     // 繳款截止日要繳的錢）跟「已刷卡未出帳金額」（unbilled，結帳日之後
     // 新刷的、算在下一期帳單的錢）分開追蹤。舊資料只有一個 unbilled
@@ -629,10 +651,12 @@
   function updateCategoryPreviewLabel() {
     const text = itemInput.value.trim();
     const isReimb = entryType === "income" && reimburseCheck.checked;
-    const guess = isReimb ? "其他收入" : (entryType === "income" ? categorizeIncome(text) : categorize(text));
+    const guess = isReimb
+      ? "代墊款收入"
+      : (entryType === "income" ? categorizeIncome(text, { skip: ["代墊款收入"] }) : categorize(text));
     if (isReimb) {
-      catDot.style.background = categoryColor("其他收入", "income");
-      catLabel.textContent = "代墊款回收（歸類：其他收入，不計入一般收入）";
+      catDot.style.background = categoryColor("代墊款收入", "income");
+      catLabel.textContent = "代墊款收入（不計入一般收入，用來抵減生活支出）";
       catLabel.style.color = "var(--text-primary)";
     } else if (guess) {
       catDot.style.background = categoryColor(guess, entryType);
@@ -647,12 +671,14 @@
 
   function updateCategoryPreview() {
     const text = itemInput.value.trim();
-    // 代墊款回收只有收入才有意義。這個勾選框本身永遠讓使用者自己勾，
+    // 代墊款收入只有收入才有意義。這個勾選框本身永遠讓使用者自己勾，
     // 不是只有偵測到關鍵字才讓你選——打字只是「幫忙預先勾好」，使用者
     // 一旦自己手動點過，就不再被打字蓋過去（見 reimburseManuallySet）。
+    // 偵測邏輯直接沿用 categorizeIncome() 本身的關鍵字比對（含排除
+    // 關鍵字），不另外維護第二套關鍵字清單。
     reimburseField.style.display = entryType === "income" ? "" : "none";
     if (entryType === "income" && !reimburseManuallySet) {
-      const detected = detectReimbursement(text);
+      const detected = categorizeIncome(text) === "代墊款收入";
       reimburseCheck.checked = detected;
       reimburseCategoryField.style.display = detected ? "" : "none";
     }
@@ -671,7 +697,7 @@
     if (!amount || amount <= 0) { showHint("請輸入有效金額"); return; }
 
     const isReimbursement = entryType === "income" && reimburseCheck.checked;
-    const category = isReimbursement ? "其他收入" : (entryType === "income" ? categorizeIncome(item) : categorize(item));
+    const category = isReimbursement ? "代墊款收入" : (entryType === "income" ? categorizeIncome(item, { skip: ["代墊款收入"] }) : categorize(item));
     const reimburseFor = isReimbursement ? (reimburseCategorySelect.value || null) : null;
 
     const tx = {
@@ -679,7 +705,7 @@
       type: entryType,
       date: new Date().toISOString().slice(0, 10),
       item, amount, category, paymentId,
-      isReimbursement, reimburseFor
+      reimburseFor
     };
     state.transactions.unshift(tx);
     // 支出：sign +1（帳戶減少／卡片未出帳增加）。收入：sign -1，剛好是同一個
@@ -695,7 +721,7 @@
     reimburseCategorySelect.value = "";
     reimburseManuallySet = false;
     showHint(isReimbursement
-      ? `已記錄「${item}」為代墊款回收${reimburseFor ? `，抵減「${reimburseFor}」` : "（尚未指定抵減分類）"} ✓`
+      ? `已記錄「${item}」為代墊款收入${reimburseFor ? `，抵減「${reimburseFor}」` : "（尚未指定抵減分類）"} ✓`
       : `已記錄「${item}」，歸類於${category} ✓`);
     // 新增完主動收起鍵盤：不然如果原本是從「金額」欄位按下鍵盤上的
     // 送出鍵觸發，欄位清空後 focus 還留在原地、鍵盤沒關，之後畫面
@@ -826,10 +852,10 @@
       </div>
       <div id="txEditReimburseBlock" ${editType === "income" ? "" : 'style="display:none;"'}>
         <label class="checkbox-label">
-          <input type="checkbox" id="txEditReimburseCheck" ${tx.isReimbursement ? "checked" : ""}>
-          <span>這是代墊款回收（不列入一般收入，用來抵減生活支出）</span>
+          <input type="checkbox" id="txEditReimburseCheck" ${tx.category === "代墊款收入" ? "checked" : ""}>
+          <span>這是代墊款收入（不列入一般收入，用來抵減生活支出）</span>
         </label>
-        <div id="txEditReimburseCategoryField" ${tx.isReimbursement ? "" : 'style="display:none;"'}>
+        <div id="txEditReimburseCategoryField" ${tx.category === "代墊款收入" ? "" : 'style="display:none;"'}>
           <label class="field-label">抵減哪個生活支出分類？（選填）</label>
           <select id="txEditReimburseCategory" class="text-input"></select>
         </div>
@@ -894,9 +920,8 @@
       tx.amount = amount;
       tx.paymentId = paymentId;
       tx.date = date;
-      tx.isReimbursement = isReimbursement;
       tx.reimburseFor = reimburseFor;
-      tx.category = isReimbursement ? "其他收入" : (editType === "income" ? categorizeIncome(item) : categorize(item));
+      tx.category = isReimbursement ? "代墊款收入" : (editType === "income" ? categorizeIncome(item, { skip: ["代墊款收入"] }) : categorize(item));
 
       applyPaymentDelta(paymentId, amount, editType === "expense" ? +1 : -1);
 
@@ -922,10 +947,80 @@
     modalBody.querySelector("#historyCloseBtn").addEventListener("click", closeModal);
   }
 
-  /* ================= 生活收支／投資收支／代墊款回收 統計邏輯 =================
+  /* ================= 既有「其他收入」裡可能的代墊款收入：確認/批次重新分類 =================
+     「代墊款收入」分類是這次新增的。既有資料裡如果已經透過更早一版的
+     關鍵字判斷標記過 isReimbursement（見 migrateState），上面已經直接
+     接上新分類了；但也可能有一些舊的「其他收入」紀錄從來沒被標記過，
+     文字卻看起來像代墊款（例如使用者當初就只是打「其他收入」，什麼都
+     沒勾）。這裡絕不自動改這些舊資料，只找出來讓使用者自己確認、或
+     一次全部套用／忽略——避免真正的其他收入被誤改。 */
+  // 只用語意明確的關鍵字去找候選紀錄（不用「還款」「給款」這種模糊
+  // 關鍵字，模糊字串誤判機率較高，留給使用者自己判斷就好，不主動列出）。
+  const REIMBURSE_REVIEW_CANDIDATE_KEYWORDS = ["朋友還款", "同事還款", "家人還款", "代墊還款", "代墊款回收", "代墊款收入", "還我", "還錢"];
+  function findReimburseReviewCandidates() {
+    const dismissed = state.reimburseReviewDismissedIds || [];
+    return state.transactions.filter(t =>
+      t.type === "income" &&
+      t.category !== "代墊款收入" &&
+      !dismissed.includes(t.id) &&
+      REIMBURSE_REVIEW_CANDIDATE_KEYWORDS.some(k => t.item.toLowerCase().includes(k.toLowerCase()))
+    );
+  }
+
+  function openReimburseReviewModal() {
+    const candidates = findReimburseReviewCandidates();
+    modalBody.innerHTML = `
+      <h3>可能的代墊款收入</h3>
+      <p class="hint-text" style="margin:0 0 8px;">以下既有收入紀錄的項目文字包含代墊款常見關鍵字，但目前分類不是「代墊款收入」。套用只會改分類，不會動金額、日期或帳戶；忽略的紀錄之後不會再被列出來。</p>
+      <ul class="plain-list modal-scroll-list" id="reimburseReviewList">${
+        candidates.map(t => `
+          <li class="list-item">
+            <div class="item-main">
+              <div class="item-title">${escapeHtml(t.item)}</div>
+              <div class="item-sub">${t.date} · 目前分類：${escapeHtml(t.category)} · +${money(t.amount)}</div>
+            </div>
+            <button class="add-mini" data-apply-reimburse="${t.id}">改為代墊款收入</button>
+            <button class="add-mini secondary" data-dismiss-reimburse="${t.id}">忽略</button>
+          </li>`).join("") || `<li class="empty-hint" style="display:block;">目前沒有需要確認的紀錄</li>`
+      }</ul>
+      <div class="modal-actions">
+        ${candidates.length ? `<button class="btn-save" id="reimburseReviewApplyAllBtn">全部改為代墊款收入</button>` : ""}
+        <button class="btn-cancel" id="reimburseReviewCloseBtn" style="flex:1;">關閉</button>
+      </div>`;
+    modalOverlay.classList.add("open");
+
+    modalBody.querySelectorAll("[data-apply-reimburse]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const t = state.transactions.find(x => x.id === btn.getAttribute("data-apply-reimburse"));
+        if (t) t.category = "代墊款收入";
+        renderHome(); renderChart();
+        saveState(state);
+        openReimburseReviewModal();
+      });
+    });
+    modalBody.querySelectorAll("[data-dismiss-reimburse]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const id = btn.getAttribute("data-dismiss-reimburse");
+        if (!state.reimburseReviewDismissedIds.includes(id)) state.reimburseReviewDismissedIds.push(id);
+        saveState(state);
+        openReimburseReviewModal();
+      });
+    });
+    if (candidates.length) {
+      modalBody.querySelector("#reimburseReviewApplyAllBtn").addEventListener("click", () => {
+        candidates.forEach(t => { t.category = "代墊款收入"; });
+        renderHome(); renderChart();
+        saveState(state);
+        openReimburseReviewModal();
+      });
+    }
+    modalBody.querySelector("#reimburseReviewCloseBtn").addEventListener("click", closeModal);
+  }
+
+  /* ================= 生活收支／投資收支／代墊款收入 統計邏輯 =================
      三種資金流動分開統計，彼此不重疊：
-     - 生活收支：一般花費跟收入，排除「投資」「調整」分類，也排除標記
-       為「代墊款回收」的收入（那不是真正賺到的錢，是拿回代墊出去的）。
+     - 生活收支：一般花費跟收入，排除「投資」「調整」「代墊款收入」
+       分類（代墊款收入不是真正賺到的錢，是拿回自己先墊出去的）。
      - 投資收支：只看「投資」分類，流出＝投資支出、流入＝投資收入，
        只算資金進出金額，不追蹤持有部位或市值。
      - 「調整」維持原本的規則：影響帳戶餘額、出現在交易紀錄，但不計入
@@ -941,9 +1036,9 @@
     });
   }
 
-  const LIFE_EXCLUDED_CATEGORIES = ["投資", "調整"];
+  const LIFE_EXCLUDED_CATEGORIES = ["投資", "調整", "代墊款收入"];
 
-  // 一般生活支出的「原始」交易（未扣代墊款回收），不含投資／調整，
+  // 一般生活支出的「原始」交易（未扣代墊款收入），不含投資／調整，
   // 其他分類也尊重使用者在「管理分類」裡對 countsTowardPL 的覆寫。
   function lifeExpenseTxs(offset) {
     return monthAllTxs(offset).filter(t =>
@@ -953,20 +1048,19 @@
     );
   }
 
-  // 一般生活收入：不含投資／調整，也不含代墊款回收（那是拿回自己的
+  // 一般生活收入：不含投資／調整／代墊款收入（代墊款收入是拿回自己的
   // 錢，不是賺到的錢，不能讓收入報表虛增）。
   function lifeIncomeTxs(offset) {
     return monthAllTxs(offset).filter(t =>
       t.type === "income" &&
       !LIFE_EXCLUDED_CATEGORIES.includes(t.category) &&
-      !t.isReimbursement &&
       countsTowardPL(t.category, "income")
     );
   }
 
-  // 代墊款回收交易（一定是收入，isReimbursement 為 true）
+  // 代墊款收入交易（一定是收入，分類固定是「代墊款收入」）
   function reimbursementTxs(offset) {
-    return monthAllTxs(offset).filter(t => t.type === "income" && t.isReimbursement);
+    return monthAllTxs(offset).filter(t => t.type === "income" && t.category === "代墊款收入");
   }
 
   function investmentExpenseTxs(offset) {
@@ -976,7 +1070,7 @@
     return monthAllTxs(offset).filter(t => t.type === "income" && t.category === "投資");
   }
 
-  // 本月生活收支的完整統計：原始支出／代墊款回收／扣除代墊款回收後
+  // 本月生活收支的完整統計：原始支出／代墊款收入／扣除代墊款收入後
   // 的「個人實際」支出（總額用簡單減法，分類別圖表金額另外逐類別
   // 相減、最低顯示 0，細節見下面 renderChart 的註解）。
   function computeLifeStats(offset) {
@@ -998,9 +1092,9 @@
     });
     const reimburseTotal = reimbTxs.reduce((s, t) => s + t.amount, 0);
 
-    // 每個分類的「實際支出」= 原始支出 - 指定抵減這個分類的代墊款回收，
+    // 每個分類的「實際支出」= 原始支出 - 指定抵減這個分類的代墊款收入，
     // 最低顯示 0（不在圖表裡出現負數支出）；如果某個分類被扣到低於 0，
-    // 或代墊款回收指定的分類這個月根本沒有原始支出，都記下來，渲染時
+    // 或代墊款收入指定的分類這個月根本沒有原始支出，都記下來，渲染時
     // 另外標示「資料可能有未配對或錯誤的代墊款紀錄」，不要默默吃掉。
     const netByCategory = {};
     const mismatchedCategories = [];
@@ -1046,7 +1140,7 @@
 
     const breakdownHint = document.getElementById("lifeExpenseBreakdownHint");
     if (life.reimburseTotal > 0) {
-      breakdownHint.textContent = `原始生活支出 ${money(life.rawTotal)} · 代墊款回收 ${money(life.reimburseTotal)}${life.reimburseUnassigned > 0 ? `（其中 ${money(life.reimburseUnassigned)} 尚未指定抵減分類，可到「歷史記帳紀錄」補選）` : ""}`;
+      breakdownHint.textContent = `原始生活支出 ${money(life.rawTotal)} · 代墊款收入 ${money(life.reimburseTotal)}${life.reimburseUnassigned > 0 ? `（其中 ${money(life.reimburseUnassigned)} 尚未指定抵減分類，可到「歷史記帳紀錄」補選）` : ""}`;
     } else {
       breakdownHint.textContent = "";
     }
@@ -1107,10 +1201,11 @@
     }
     const color = categoryColor(t.category, t.type);
     const isIncome = t.type === "income";
-    // 代墊款回收不是真正的收入，子標題改標示「代墊款回收」跟抵減到
-    // 哪個分類，不要讓它看起來跟一般收入一樣，才不會被誤會成賺到的錢。
-    const subLine = t.isReimbursement
-      ? `${t.date} · 代墊款回收${t.reimburseFor ? `→ 抵減「${t.reimburseFor}」` : "（未指定抵減分類）"} · ${paymentLabel(t.paymentId)}`
+    // 代墊款收入不是真正的收入，子標題多標示抵減到哪個分類，不要讓它
+    // 看起來跟一般收入一樣，才不會被誤會成賺到的錢。
+    const isReimb = t.type === "income" && t.category === "代墊款收入";
+    const subLine = isReimb
+      ? `${t.date} · 代墊款收入${t.reimburseFor ? `→ 抵減「${t.reimburseFor}」` : "（未指定抵減分類）"} · ${paymentLabel(t.paymentId)}`
       : `${t.date} · ${t.category} · ${paymentLabel(t.paymentId)}`;
     return `
       <li class="list-item">
@@ -1226,7 +1321,7 @@
     const monthLabel = `${target.getFullYear()} 年 ${target.getMonth() + 1} 月`;
     const isIncome = type === "income";
 
-    // 圖表只會顯示生活分類（投資／調整／代墊款回收已經分開統計、不會
+    // 圖表只會顯示生活分類（投資／調整／代墊款收入已經分開統計、不會
     // 出現在這份圖例裡），所以這裡固定從生活支出/生活收入的交易裡找，
     // 不用額外再判斷排除。
     const txs = (isIncome ? lifeIncomeTxs(chartMonthOffset) : lifeExpenseTxs(chartMonthOffset))
@@ -1235,15 +1330,15 @@
       .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
     const total = txs.reduce((s, t) => s + t.amount, 0);
 
-    // 支出分類如果剛好有代墊款回收指定抵減它，在清單上方多顯示一行
-    // 「原始支出／代墊款回收／實際支出」的對照，原始交易本身完全不動。
+    // 支出分類如果剛好有代墊款收入指定抵減它，在清單上方多顯示一行
+    // 「原始支出／代墊款收入／實際支出」的對照，原始交易本身完全不動。
     let breakdownHtml = "";
     if (!isIncome) {
       const life = computeLifeStats(chartMonthOffset);
       const reimb = life.reimburseByCategory[key] || 0;
       if (reimb > 0) {
         const net = life.netByCategory[key] || 0;
-        breakdownHtml = `<p class="hint-text" style="margin:0 0 8px;">原始支出 ${money(total)} － 代墊款回收 ${money(reimb)} ＝ 實際支出 ${money(net)}${life.mismatchedCategories.includes(key) ? "（代墊款回收金額超過原始支出，可能有紀錄沒配對好）" : ""}</p>`;
+        breakdownHtml = `<p class="hint-text" style="margin:0 0 8px;">原始支出 ${money(total)} － 代墊款收入 ${money(reimb)} ＝ 實際支出 ${money(net)}${life.mismatchedCategories.includes(key) ? "（代墊款收入金額超過原始支出，可能有紀錄沒配對好）" : ""}</p>`;
       }
     }
 
@@ -1281,7 +1376,7 @@
       `${target.getFullYear()} 年 ${target.getMonth() + 1} 月`;
 
     // 「這個月花去哪了」只看一般生活支出：投資／調整本來就不在
-    // lifeExpenseTxs() 裡，這裡再用 netByCategory（扣掉代墊款回收、
+    // lifeExpenseTxs() 裡，這裡再用 netByCategory（扣掉代墊款收入、
     // 最低 0）取代原始金額，圖表顯示的才是個人實際負擔。
     const life = computeLifeStats(chartMonthOffset);
     renderDonutChart({
@@ -1292,8 +1387,8 @@
     const reimburseWarning = document.getElementById("reimburseWarningChart");
     if (life.reimburseUnassigned > 0 || life.mismatchedCategories.length) {
       const parts = [];
-      if (life.reimburseUnassigned > 0) parts.push(`有 ${money(life.reimburseUnassigned)} 代墊款回收尚未指定抵減分類，已從生活支出總額扣除，但不會動到任何一個分類的圖表金額，記得到「歷史記帳紀錄」補選`);
-      if (life.mismatchedCategories.length) parts.push(`「${life.mismatchedCategories.join("、")}」的代墊款回收金額超過原始支出，圖表金額已顯示為 0，可能有紀錄沒配對好，建議檢查`);
+      if (life.reimburseUnassigned > 0) parts.push(`有 ${money(life.reimburseUnassigned)} 代墊款收入尚未指定抵減分類，已從生活支出總額扣除，但不會動到任何一個分類的圖表金額，記得到「歷史記帳紀錄」補選`);
+      if (life.mismatchedCategories.length) parts.push(`「${life.mismatchedCategories.join("、")}」的代墊款收入金額超過原始支出，圖表金額已顯示為 0，可能有紀錄沒配對好，建議檢查`);
       reimburseWarning.textContent = "⚠ " + parts.join("；");
       reimburseWarning.style.display = "";
     } else {
@@ -1305,8 +1400,8 @@
     document.getElementById("chartInvestInflow").textContent = money(investChart.inflow);
     document.getElementById("chartInvestNet").textContent = money(investChart.net);
 
-    // 收入圖也排除投資／調整／代墊款回收——投資賣出/贖回算進上面獨立
-    // 的「本月投資資金流向」，代墊款回收不是真正的收入，兩者都不該
+    // 收入圖也排除投資／調整／代墊款收入——投資賣出/贖回算進上面獨立
+    // 的「本月投資資金流向」，代墊款收入不是真正的收入，兩者都不該
     // 出現在這張「這個月收入從哪來」的圖裡，跟生活支出那張的排除邏輯
     // 一致。
     const incomeCategories = allIncomeCategories().filter(c => c.key !== "投資" && c.key !== "調整");
@@ -1617,6 +1712,7 @@
   }
 
   document.getElementById("historyBtn").addEventListener("click", openHistoryModal);
+  document.getElementById("reimburseReviewBtn").addEventListener("click", openReimburseReviewModal);
   document.getElementById("exportBtn").addEventListener("click", openExportModal);
 
   function openExportModal() {
@@ -2691,15 +2787,16 @@
           <li>打「花費項目」文字，系統會自動判斷分類（看得懂關鍵字），判斷不準或想加新分類，去「⚙ 管理分類」自己調整</li>
           <li>選擇支付方式：現金、銀行帳戶、信用卡（收入不能存進信用卡，所以收入只會看到現金跟銀行帳戶）</li>
           <li>用信用卡付的支出，會先算進那張卡「已刷卡未出帳」，等結帳日到了才會轉成「本期應繳」</li>
-          <li>「本月生活收支」只統計一般生活開銷，不含投資、調整、代墊款回收；下面「本月投資收支」另外統計股票/期貨的資金流出入，兩者分開算，不會互相影響</li>
-          <li>收入項目打到「還款」「朋友還款」「代墊還款」會自動偵測成「代墊款回收」（不是真正的收入，是拿回代墊的錢），可以選要抵減哪個生活支出分類，沒選的話之後能在「歷史記帳紀錄」補選</li>
+          <li>「本月生活收支」只統計一般生活開銷，不含投資、調整、代墊款收入；下面「本月投資收支」另外統計股票/期貨的資金流出入，兩者分開算，不會互相影響</li>
+          <li>切到「收入」會看到「這是代墊款收入」勾選框，隨時可以自己手動勾，不是只有偵測到「還款」「朋友還款」「代墊還款」之類的關鍵字才會出現；勾選後可以選要抵減哪個生活支出分類（選填），沒選的話之後能在「歷史記帳紀錄」補選。代墊款收入不是真正的收入，不會讓一般收入虛增</li>
+          <li>「信用卡還款」「房貸還款」之類的文字不會被誤判成代墊款收入——這類排除關鍵字的優先級比「還款」更高</li>
         </ul>
 
         <h4>📊 圖表</h4>
         <ul>
-          <li>支出、收入分開各一個圓餅圖，用左右箭頭切換月份，兩張圖都只看一般生活收支，不含投資、調整、代墊款回收</li>
-          <li>如果有代墊款回收指定抵減某個分類，那個分類的圖表金額會自動扣掉代墊款回收（例如餐飲花 1000、朋友還 500，圖表上餐飲只會顯示 500）</li>
-          <li>點圖例裡任一分類，可以看那個月這個分類底下的逐筆明細，有代墊款回收的話上面會列出原始支出／代墊款回收／實際支出的對照</li>
+          <li>支出、收入分開各一個圓餅圖，用左右箭頭切換月份，兩張圖都只看一般生活收支，不含投資、調整、代墊款收入</li>
+          <li>如果有代墊款收入指定抵減某個分類，那個分類的圖表金額會自動扣掉代墊款收入（例如餐飲花 1000、朋友還 500，圖表上餐飲只會顯示 500）</li>
+          <li>點圖例裡任一分類，可以看那個月這個分類底下的逐筆明細，有代墊款收入的話上面會列出原始支出／代墊款收入／實際支出的對照</li>
           <li>「本月投資資金流向」只看投資的資金流入/流出總額，不追蹤持有哪些股票或目前市值（部位變動快，不適合在這裡追蹤）</li>
           <li>「調整」這種只是校正餘額用的分類，不算進任何統計，也不會出現在圖表裡</li>
         </ul>
@@ -2711,6 +2808,7 @@
           <li>可以新增多個銀行帳戶，帳戶之間可以互轉（不算支出也不算收入）</li>
           <li>「資料管理」：把記帳紀錄整理成文字複製保存，也可以在保存好之後清空舊紀錄（帳戶、卡片、待辦、分類設定都不會被清掉）；建議每 3 個月備份一次，也別清瀏覽器快取</li>
           <li>「📜 歷史記帳紀錄」列出全部紀錄，點 ✎ 可以直接修改項目、金額、支付方式、日期，甚至把不小心記錯的支出/收入互改，不用刪掉重新輸入</li>
+          <li>「🔍 檢查可能的代墊款收入」會列出既有「其他收入」裡文字看起來像代墊款、但還沒被改成「代墊款收入」分類的舊紀錄，可以逐筆或一次全部改過去，也可以忽略（忽略後不會再被列出來）；不會自動改任何舊資料</li>
         </ul>
 
         <h4>💳 信用卡</h4>
@@ -2731,7 +2829,7 @@
         <ul>
           <li>可以幫既有分類新增自訂關鍵字，讓自動判斷更準；「投資」分類的關鍵字（含「期貨」）優先判斷，不會被其他分類的關鍵字搶走</li>
           <li>也可以整個新增自己的分類，用色票、滑動調色盤或直接輸入色號自訂顏色</li>
-          <li>每個分類（內建、自訂都可以）都能設定「是否計入本月支出/收入統計」；「投資」跟「調整」一律獨立統計、不會出現在生活收支或圖表裡，這裡的開關對它們兩個沒有作用</li>
+          <li>每個分類（內建、自訂都可以）都能設定「是否計入本月支出/收入統計」；「投資」「調整」「代墊款收入」一律獨立統計、不會出現在生活收支或圖表裡，這裡的開關對這三個沒有作用</li>
         </ul>
 
         ${guideSyncSection()}
