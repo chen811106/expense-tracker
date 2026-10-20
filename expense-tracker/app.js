@@ -1046,7 +1046,7 @@
           <div class="item-sub">隨身現金</div>
         </div>
         <div class="item-amount">${money(state.cashBalance)}</div>
-        <button class="item-edit" id="editCashBtn" aria-label="編輯">✎</button>
+        <button class="item-edit" id="editCashBtn" aria-label="調整餘額">✎</button>
       </li>`;
 
     list.innerHTML = cashRow + state.accounts.map(a => `
@@ -1057,10 +1057,20 @@
           <div class="item-sub">銀行帳戶</div>
         </div>
         <div class="item-amount">${money(a.balance)}</div>
+        <button class="item-edit" data-edit-acc="${a.id}" aria-label="調整餘額">✎</button>
         <button class="item-delete" data-del-acc="${a.id}" aria-label="刪除">✕</button>
       </li>`).join("");
 
-    document.getElementById("editCashBtn").addEventListener("click", openCashModal);
+    document.getElementById("editCashBtn").addEventListener("click", () => {
+      openBalanceAdjustModal("cash", "現金", state.cashBalance);
+    });
+
+    list.querySelectorAll("[data-edit-acc]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const acc = state.accounts.find(a => a.id === btn.getAttribute("data-edit-acc"));
+        if (acc) openBalanceAdjustModal(acc.id, acc.name, acc.balance);
+      });
+    });
 
     list.querySelectorAll("[data-del-acc]").forEach(btn => {
       btn.addEventListener("click", () => {
@@ -1079,20 +1089,75 @@
       money(state.accounts.reduce((s, a) => s + a.balance, 0) + state.cashBalance);
   }
 
-  // 現金餘額用一個很單純的單欄位 modal 直接調整（例如提款、發現數字對
-  // 不上想手動校正），不透過記一筆支出/收入，避免又跑出一筆不必要的
-  // 交易紀錄——跟信用卡編輯視窗一樣，是「設定目前的值」而不是「加減」。
-  function openCashModal() {
-    openModal({
-      title: "調整現金餘額",
-      fields: [
-        { key: "cashBalance", label: "目前現金餘額", type: "number", placeholder: "0" }
-      ],
-      initial: { cashBalance: state.cashBalance },
-      onSave: (v) => {
-        state.cashBalance = parseFloat(v.cashBalance) || 0;
-        renderAccounts(); renderHome();
-      }
+  // 帳戶餘額手動校正（現金／銀行帳戶共用）：使用者直接輸入「新的餘額」，
+  // 系統自動算出差額，用既有的「調整」分類記一筆支出或收入——跟使用者
+  // 自己在首頁手動打「調整」文字記的是同一個分類、同一套資料結構
+  // （countsTowardPL 本來就是 false，不會列入收支統計/損益，不需要額外
+  // 處理），不另外建立新的交易類型。
+  function openBalanceAdjustModal(paymentId, label, currentBalance) {
+    modalBody.innerHTML = `
+      <h3>調整餘額</h3>
+      <p class="hint-text" style="margin:0 0 8px;">${escapeHtml(label)}目前餘額 ${money(currentBalance)}</p>
+      <label class="field-label">新的餘額</label>
+      <input id="balanceAdjustInput" class="text-input" type="number" value="${currentBalance}">
+      <p class="hint-text" id="balanceAdjustHint"></p>
+      <div class="modal-actions">
+        <button class="btn-cancel" id="balanceAdjustCancelBtn">取消</button>
+        <button class="btn-save" id="balanceAdjustBtn">調整餘額</button>
+      </div>`;
+    modalOverlay.classList.add("open");
+
+    modalBody.querySelector("#balanceAdjustCancelBtn").addEventListener("click", closeModal);
+    modalBody.querySelector("#balanceAdjustBtn").addEventListener("click", () => {
+      const input = modalBody.querySelector("#balanceAdjustInput");
+      const hint = modalBody.querySelector("#balanceAdjustHint");
+      const newBalance = parseFloat(input.value);
+      if (isNaN(newBalance)) { hint.textContent = "請輸入有效金額"; return; }
+
+      const diff = Math.round((newBalance - currentBalance) * 100) / 100;
+      if (diff === 0) { hint.textContent = "餘額未變更"; return; }
+
+      openBalanceAdjustConfirm(paymentId, label, currentBalance, newBalance, diff);
+    });
+  }
+
+  // 調整前再跳一次確認視窗，列出目前餘額／調整後餘額／調整金額，
+  // 確認後才真的記那筆「調整」紀錄，取消就直接關掉、什麼都不會發生。
+  function openBalanceAdjustConfirm(paymentId, label, currentBalance, newBalance, diff) {
+    const sign = diff > 0 ? "+" : "-";
+    modalBody.innerHTML = `
+      <h3>確認調整餘額</h3>
+      <p class="confirm-message">
+        ${escapeHtml(label)}<br>
+        目前餘額：${money(currentBalance)}<br>
+        調整後餘額：${money(newBalance)}<br>
+        調整金額：${sign}${money(Math.abs(diff))}
+      </p>
+      <div class="modal-actions">
+        <button class="btn-cancel" id="balanceAdjustConfirmCancelBtn">取消</button>
+        <button class="btn-save" id="balanceAdjustConfirmBtn">確認</button>
+      </div>`;
+    modalOverlay.classList.add("open");
+
+    modalBody.querySelector("#balanceAdjustConfirmCancelBtn").addEventListener("click", closeModal);
+    modalBody.querySelector("#balanceAdjustConfirmBtn").addEventListener("click", () => {
+      const amount = Math.abs(diff);
+      const type = diff > 0 ? "income" : "expense";
+      const tx = {
+        id: uid(),
+        type,
+        date: new Date().toISOString().slice(0, 10),
+        item: "帳戶餘額調整",
+        amount,
+        category: "調整",
+        paymentId
+      };
+      state.transactions.unshift(tx);
+      applyPaymentDelta(paymentId, amount, type === "expense" ? +1 : -1);
+
+      closeModal();
+      renderHome(); renderChart(); renderAccounts(); renderWaterLevel();
+      saveState(state);
     });
   }
 
@@ -2353,7 +2418,8 @@
 
         <h4>🏦 帳戶</h4>
         <ul>
-          <li>「現金」固定釘在最上面、不能刪除，點編輯可以直接調整目前現金餘額</li>
+          <li>「現金」固定釘在最上面、不能刪除</li>
+          <li>每個帳戶（含現金）都可以點 ✎「調整餘額」：輸入實際餘額後，系統自動算出差額，用「調整」分類記一筆支出/收入校正帳面（不列入支出/收入統計），新舊餘額相同不會重複記錄</li>
           <li>可以新增多個銀行帳戶，帳戶之間可以互轉（不算支出也不算收入）</li>
           <li>「資料管理」：把記帳紀錄整理成文字複製保存，也可以在保存好之後清空舊紀錄（帳戶、卡片、待辦、分類設定都不會被清掉）；建議每 3 個月備份一次，也別清瀏覽器快取</li>
           <li>「📜 歷史記帳紀錄」列出全部紀錄，點 ✎ 可以直接修改項目、金額、支付方式、日期，甚至把不小心記錯的支出/收入互改，不用刪掉重新輸入</li>
