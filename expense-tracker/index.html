@@ -104,9 +104,15 @@
           <span id="catLabel">輸入後將自動判斷分類</span>
         </div>
 
-        <div class="field" id="reimburseField" style="display:none;">
-          <label class="field-label">抵減哪個生活支出分類？（選填，之後也能補選）</label>
-          <select id="reimburseCategorySelect" class="text-input"></select>
+        <div id="reimburseField" style="display:none;">
+          <label class="checkbox-label">
+            <input type="checkbox" id="reimburseCheck">
+            <span>這是代墊款回收（不列入一般收入，用來抵減生活支出）</span>
+          </label>
+          <div class="field" id="reimburseCategoryField" style="display:none;">
+            <label class="field-label">抵減哪個生活支出分類？（選填，之後也能補選）</label>
+            <select id="reimburseCategorySelect" class="text-input"></select>
+          </div>
         </div>
 
         <div class="row">

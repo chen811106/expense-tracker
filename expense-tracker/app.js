@@ -122,7 +122,7 @@
   // 關鍵字比對機制），目前也沒有貸款功能，所以「還款」在這個 App 裡
   // 不會跟既有功能衝突；仍然把語意更明確的「代墊還款」「朋友還款」
   // 「代墊款回收」放前面，比對到任何一個就視為代墊款回收。
-  const REIMBURSEMENT_KEYWORDS = ["代墊款回收", "代墊還款", "朋友還款", "還款"];
+  const REIMBURSEMENT_KEYWORDS = ["代墊款回收", "代墊還款", "代墊款", "代墊", "朋友還款", "還款"];
   function detectReimbursement(text) {
     if (!text) return false;
     const t = text.toLowerCase();
@@ -565,12 +565,25 @@
   const formHint = document.getElementById("formHint");
   const typeToggle = document.getElementById("typeToggle");
   const reimburseField = document.getElementById("reimburseField");
+  const reimburseCheck = document.getElementById("reimburseCheck");
+  const reimburseCategoryField = document.getElementById("reimburseCategoryField");
   const reimburseCategorySelect = document.getElementById("reimburseCategorySelect");
 
   function renderReimburseCategoryOptions() {
     reimburseCategorySelect.innerHTML = `<option value="">未指定</option>` +
       lifeExpenseCategories().map(c => `<option value="${escapeAttr(c.key)}">${escapeHtml(c.key)}</option>`).join("");
   }
+
+  // 使用者自己手動點過這個勾選框之後，輸入框打字就不再自動幫他改
+  // 勾選狀態了——不然打字過程中關鍵字判斷一變，剛手動勾的／取消的
+  // 又被蓋回去，會讓人覺得「我明明勾了怎麼又跳掉」。切換支出/收入、
+  // 或送出一筆之後才重置，讓下一筆重新從自動偵測開始。
+  let reimburseManuallySet = false;
+  reimburseCheck.addEventListener("change", () => {
+    reimburseManuallySet = true;
+    reimburseCategoryField.style.display = reimburseCheck.checked ? "" : "none";
+    updateCategoryPreviewLabel();
+  });
 
   let entryType = "expense"; // 'expense' | 'income'
 
@@ -590,6 +603,10 @@
     if (!btn) return;
     entryType = btn.getAttribute("data-type");
     typeToggle.querySelectorAll(".type-btn").forEach(b => b.classList.toggle("active", b === btn));
+    // 切換支出/收入視為開始填一筆新的，代墊款勾選重新從自動偵測開始。
+    reimburseManuallySet = false;
+    reimburseCheck.checked = false;
+    reimburseCategoryField.style.display = "none";
 
     if (entryType === "income") {
       itemLabelEl.textContent = "收入項目";
@@ -606,18 +623,16 @@
     updateCategoryPreview();
   });
 
-  function updateCategoryPreview() {
+  // 只負責依照目前的勾選框狀態（不重新判斷關鍵字）更新分類預覽文字，
+  // 使用者手動點勾選框時呼叫這個就好，不要整個 updateCategoryPreview()
+  // 重跑一次，不然會把剛剛的手動勾選又蓋過去。
+  function updateCategoryPreviewLabel() {
     const text = itemInput.value.trim();
-    // 代墊款回收只有收入才有意義，而且優先權比一般收入分類關鍵字高——
-    // 偵測到的話固定歸類「其他收入」，不列入一般收入，另外讓使用者
-    // 選要抵減哪個生活支出分類（選填，之後也能在歷史紀錄補選）。
-    const reimb = entryType === "income" && detectReimbursement(text);
-    reimburseField.style.display = reimb ? "" : "none";
-
-    const guess = reimb ? "其他收入" : (entryType === "income" ? categorizeIncome(text) : categorize(text));
-    if (reimb) {
+    const isReimb = entryType === "income" && reimburseCheck.checked;
+    const guess = isReimb ? "其他收入" : (entryType === "income" ? categorizeIncome(text) : categorize(text));
+    if (isReimb) {
       catDot.style.background = categoryColor("其他收入", "income");
-      catLabel.textContent = `偵測為代墊款回收（歸類：其他收入，不計入一般收入）`;
+      catLabel.textContent = "代墊款回收（歸類：其他收入，不計入一般收入）";
       catLabel.style.color = "var(--text-primary)";
     } else if (guess) {
       catDot.style.background = categoryColor(guess, entryType);
@@ -628,6 +643,20 @@
       catLabel.textContent = "輸入後將自動判斷分類";
       catLabel.style.color = "var(--text-secondary)";
     }
+  }
+
+  function updateCategoryPreview() {
+    const text = itemInput.value.trim();
+    // 代墊款回收只有收入才有意義。這個勾選框本身永遠讓使用者自己勾，
+    // 不是只有偵測到關鍵字才讓你選——打字只是「幫忙預先勾好」，使用者
+    // 一旦自己手動點過，就不再被打字蓋過去（見 reimburseManuallySet）。
+    reimburseField.style.display = entryType === "income" ? "" : "none";
+    if (entryType === "income" && !reimburseManuallySet) {
+      const detected = detectReimbursement(text);
+      reimburseCheck.checked = detected;
+      reimburseCategoryField.style.display = detected ? "" : "none";
+    }
+    updateCategoryPreviewLabel();
   }
 
   itemInput.addEventListener("input", updateCategoryPreview);
@@ -641,7 +670,7 @@
     if (!item) { showHint(entryType === "income" ? "請輸入收入項目" : "請輸入花費項目"); return; }
     if (!amount || amount <= 0) { showHint("請輸入有效金額"); return; }
 
-    const isReimbursement = entryType === "income" && detectReimbursement(item);
+    const isReimbursement = entryType === "income" && reimburseCheck.checked;
     const category = isReimbursement ? "其他收入" : (entryType === "income" ? categorizeIncome(item) : categorize(item));
     const reimburseFor = isReimbursement ? (reimburseCategorySelect.value || null) : null;
 
@@ -661,8 +690,10 @@
     amountInput.value = "";
     catDot.style.background = "var(--text-faint)";
     catLabel.textContent = "輸入後將自動判斷分類";
-    reimburseField.style.display = "none";
+    reimburseCheck.checked = false;
+    reimburseCategoryField.style.display = "none";
     reimburseCategorySelect.value = "";
+    reimburseManuallySet = false;
     showHint(isReimbursement
       ? `已記錄「${item}」為代墊款回收${reimburseFor ? `，抵減「${reimburseFor}」` : "（尚未指定抵減分類）"} ✓`
       : `已記錄「${item}」，歸類於${category} ✓`);
