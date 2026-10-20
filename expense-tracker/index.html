@@ -42,20 +42,46 @@
     <!-- ============ 首頁 / 快速記帳 ============ -->
     <section id="tab-home" class="tab-panel active">
 
-      <div class="card summary-card">
-        <div class="summary-item">
-          <span>本月支出</span>
-          <strong id="monthTotal">$0</strong>
+      <div class="card">
+        <div class="summary-card">
+          <div class="summary-item">
+            <span>本月生活支出</span>
+            <strong id="monthTotal">$0</strong>
+          </div>
+          <div class="summary-divider"></div>
+          <div class="summary-item income">
+            <span>本月生活收入</span>
+            <strong id="monthIncome">$0</strong>
+          </div>
+          <div class="summary-divider"></div>
+          <div class="summary-item">
+            <span>帳戶總餘額</span>
+            <strong id="totalBalance">$0</strong>
+          </div>
         </div>
-        <div class="summary-divider"></div>
-        <div class="summary-item income">
-          <span>本月收入</span>
-          <strong id="monthIncome">$0</strong>
+        <div class="total-row">
+          <span>本月生活結餘</span>
+          <strong id="lifeBalance">$0</strong>
         </div>
-        <div class="summary-divider"></div>
-        <div class="summary-item">
-          <span>帳戶總餘額</span>
-          <strong id="totalBalance">$0</strong>
+        <p class="hint-text" id="lifeExpenseBreakdownHint" style="margin-top:4px;"></p>
+      </div>
+
+      <div class="card">
+        <div class="section-head">
+          <h2>本月投資收支</h2>
+        </div>
+        <p class="hint-text" style="margin-top:0;">只統計股票/期貨相關的資金進出，跟生活收支分開算，不追蹤目前持有部位或市值。</p>
+        <div class="total-row">
+          <span>投資流出</span>
+          <strong id="investOutflow">$0</strong>
+        </div>
+        <div class="total-row">
+          <span>投資流入</span>
+          <strong id="investInflow">$0</strong>
+        </div>
+        <div class="total-row">
+          <span>投資淨流量</span>
+          <strong id="investNet">$0</strong>
         </div>
       </div>
 
@@ -76,6 +102,11 @@
         <div class="category-preview" id="categoryPreview">
           <span class="cat-dot" id="catDot"></span>
           <span id="catLabel">輸入後將自動判斷分類</span>
+        </div>
+
+        <div class="field" id="reimburseField" style="display:none;">
+          <label class="field-label">抵減哪個生活支出分類？（選填，之後也能補選）</label>
+          <select id="reimburseCategorySelect" class="text-input"></select>
         </div>
 
         <div class="row">
@@ -123,6 +154,26 @@
 
         <ul id="chartLegend" class="legend"></ul>
         <p class="empty-hint" id="chartEmpty">這個月還沒有支出紀錄</p>
+        <p class="hint-text" id="reimburseWarningChart" style="display:none;"></p>
+      </div>
+
+      <div class="card">
+        <div class="section-head">
+          <h2>本月投資資金流向</h2>
+        </div>
+        <p class="hint-text" style="margin-top:0;">只看資金流入/流出，不做持倉或配置分析（股票/期貨部位變動快，也可能短線交易，不適合追蹤市值）。</p>
+        <div class="total-row">
+          <span>投資流出</span>
+          <strong id="chartInvestOutflow">$0</strong>
+        </div>
+        <div class="total-row">
+          <span>投資流入</span>
+          <strong id="chartInvestInflow">$0</strong>
+        </div>
+        <div class="total-row">
+          <span>投資淨流量</span>
+          <strong id="chartInvestNet">$0</strong>
+        </div>
       </div>
 
       <div class="card">
