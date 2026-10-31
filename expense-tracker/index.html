@@ -66,25 +66,6 @@
         <p class="hint-text" id="lifeExpenseBreakdownHint" style="margin-top:4px;"></p>
       </div>
 
-      <div class="card">
-        <div class="section-head">
-          <h2>本月投資收支</h2>
-        </div>
-        <p class="hint-text" style="margin-top:0;">只統計股票/期貨相關的資金進出，跟生活收支分開算，不追蹤目前持有部位或市值。</p>
-        <div class="total-row">
-          <span>投資流出</span>
-          <strong id="investOutflow">$0</strong>
-        </div>
-        <div class="total-row">
-          <span>投資流入</span>
-          <strong id="investInflow">$0</strong>
-        </div>
-        <div class="total-row">
-          <span>投資淨流量</span>
-          <strong id="investNet">$0</strong>
-        </div>
-      </div>
-
       <div class="card add-expense">
         <div class="section-head">
           <h2>快速記一筆</h2>
@@ -244,6 +225,20 @@
 
     <!-- ============ 週期待辦 ============ -->
     <section id="tab-checklist" class="tab-panel">
+      <div class="card">
+        <div class="section-head">
+          <h2>別人欠我的錢</h2>
+          <button class="add-mini" id="addReceivableBtn">+ 新增</button>
+        </div>
+        <p class="hint-text" style="margin-top:0;">記一筆誰欠你錢、因為什麼事；對方還錢時按掉，選收款方式就會自動入帳（不計入一般收入，用「對象+還款」記錄，例如「Jerry還款」）。</p>
+        <ul id="receivableList" class="plain-list"></ul>
+        <p class="empty-hint" id="receivableEmpty">目前沒有人欠你錢</p>
+        <div class="total-row">
+          <span>目前應收總額</span>
+          <strong id="receivableTotal">$0</strong>
+        </div>
+      </div>
+
       <div class="card">
         <div class="section-head">
           <h2>本月帳戶水位提醒</h2>
