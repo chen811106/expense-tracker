@@ -675,6 +675,36 @@ body{
 .recurring-amount.done{ color: var(--text-faint); text-decoration: line-through; }
 .recurring-actions{ display: flex; align-items: center; gap: 2px; }
 
+/* ---------- 別人欠我的錢：同一個人分好幾筆欠款，用小清單列在
+   對象名稱下面，一樣可以各自編輯/刪除，群組標題的勾選框一次結清
+   當下這個人名下所有未收款的項目 ---------- */
+.receivable-group{ border-bottom: 1px solid var(--border); }
+.receivable-group:last-child{ border-bottom: none; }
+.receivable-group-head{ border-bottom: none; padding-bottom: 6px; }
+.receivable-entries{
+  list-style: none;
+  margin: 0 0 10px 34px;
+  padding: 0;
+}
+.receivable-entry{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.receivable-entry-note{
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.receivable-entry-amount{ color: var(--text-primary); font-weight: 600; white-space: nowrap; }
+.receivable-entry .item-edit,
+.receivable-entry .item-delete{ font-size: 13px; }
+
 /* ---------- 底部導覽 ---------- */
 .bottom-nav{
   position: sticky;

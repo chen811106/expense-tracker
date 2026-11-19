@@ -811,10 +811,15 @@
       renderDca();
     }
     // 應收款項同理：從最近紀錄直接刪掉那筆還款交易，也要把「別人欠我
-    // 的錢」清單上對應項目的已收款狀態解除。
-    if (tx.receivableId) {
-      const rec = state.receivables.find(x => x.id === tx.receivableId);
-      if (rec) { rec.done = false; rec.lastTxId = null; }
+    // 的錢」清單上對應項目的已收款狀態解除——一筆還款交易可能一次結清
+    // 同一個人好幾筆應收款項（receivableIds 是陣列），舊版本只結清
+    // 一筆時用的是單數的 receivableId，兩種都要認得。
+    const receivableIds = tx.receivableIds || (tx.receivableId ? [tx.receivableId] : []);
+    if (receivableIds.length) {
+      receivableIds.forEach(id => {
+        const rec = state.receivables.find(x => x.id === id);
+        if (rec) { rec.done = false; rec.lastTxId = null; }
+      });
       renderReceivables();
     }
     state.transactions.splice(idx, 1);
@@ -2415,13 +2420,21 @@
   document.getElementById("addDcaBtn").addEventListener("click", () => openDcaModal(null));
 
   /* ================= 別人欠我的錢（應收款項） =================
-     跟週期性繳費／定期定額不一樣的地方：這是一次性的待辦，沒有「每月
-     重置」——對方還錢、按掉之後就一直維持已收款狀態，不會到了下個月
-     又自動變回未收款。對方還款時選的收款方式／帳戶，直接沿用「代墊款
-     回收」那套既有邏輯：記一筆分類「代墊款收入」的收入（item 固定寫
-     「{對象}還款」，例如「Jerry還款」），不計入一般收入、可選要抵減
-     哪個生活支出分類，統計/圖表排除的規則完全沿用 computeLifeStats()，
-     不另外寫一套。 */
+     同一個人可能分好幾次欠錢（今天茶葉蛋 30 元、隔天模型 900 元），
+     每一筆都用「一筆一筆記」的方式各自存成一筆 receivable（debtor／
+     note／amount／date），不用使用者自己手動加總——畫面上依照 debtor
+     這個欄位的文字完全相同，把還沒收款的紀錄自動分組、加總顯示
+     （groupPendingReceivables()），對方還錢時一次把該對象名下目前所有
+     未收款的項目一起結清、合記一筆交易。跟週期性繳費／定期定額不一樣
+     的地方：這是一次性的待辦，沒有「每月重置」。對方還款時選的收款
+     方式／帳戶，直接沿用「代墊款收入」那套既有邏輯：記一筆分類「代墊
+     款收入」的收入（item 固定寫「{對象}還款」，例如「Jerry還款」），
+     不計入一般收入、可選要抵減哪個生活支出分類，統計/圖表排除的規則
+     完全沿用 computeLifeStats()，不另外寫一套。
+     結清後的紀錄不會留在這張卡片裡（已經變成一筆正常的交易了）；如果
+     勾錯想復原，跟其他交易一樣去「歷史記帳紀錄」把那筆「{對象}還款」
+     刪掉即可——deleteTransaction() 看到 tx.receivableIds 會自動把這些
+     項目的已收款狀態解除，不需要在這裡另外做一套復原 UI。 */
   function openReceivableModal(existing) {
     openModal({
       title: existing ? "編輯應收款項" : "新增應收款項",
@@ -2457,26 +2470,60 @@
 
   document.getElementById("addReceivableBtn").addEventListener("click", () => openReceivableModal(null));
 
-  // 對方還錢時按掉勾選框：選收款方式（現金／銀行帳戶，不能收到信用卡
-  // 裡），可選要抵減哪個生活支出分類——用「因為什麼事」的備註文字跑一次
-  // 既有的 categorize() 幫忙猜一個生活分類當預設值（猜不到就是「未
-  // 指定」），使用者仍然可以自己改選，不是強制套用。
-  function openReceivableSettleModal(r) {
+  // 把還沒收款的應收款項，依「對象是誰」這個欄位的文字完全相同分組、
+  // 加總——同一個人分好幾次欠的錢，不用使用者自己手動加，這裡自動幫
+  // 他加總。依陣列目前的順序分組（新增是 unshift 到最前面，所以最近
+  // 新增過款項的對象會排在最前面）。
+  function groupPendingReceivables() {
+    const order = [];
+    const byDebtor = {};
+    state.receivables.forEach(r => {
+      if (r.done) return;
+      if (!byDebtor[r.debtor]) { byDebtor[r.debtor] = []; order.push(r.debtor); }
+      byDebtor[r.debtor].push(r);
+    });
+    return order.map(debtor => ({
+      debtor,
+      entries: byDebtor[debtor],
+      total: byDebtor[debtor].reduce((s, r) => s + r.amount, 0)
+    }));
+  }
+
+  // 對方還錢時按掉勾選框：一次結清這個對象名下「目前」所有未收款的
+  // 項目（entries），選收款方式（現金／銀行帳戶，不能收到信用卡裡），
+  // 可選要抵減哪個生活支出分類——如果好幾筆的備註文字用既有的
+  // categorize() 都猜到同一個生活分類，就幫忙預選那個分類；猜出來的
+  // 分類不一致（例如這次同時結清「午餐」跟「電影」），就不要亂猜，
+  // 顯示「未指定」讓使用者自己選，使用者永遠可以自己改選，不是強制
+  // 套用。
+  function openReceivableSettleModal(debtor, entries) {
+    const total = entries.reduce((s, r) => s + r.amount, 0);
     const methodOptions = `<option value="cash">現金</option>` +
       (state.accounts.length ? `<optgroup label="銀行帳戶">` + state.accounts.map(a => `<option value="${a.id}">${escapeHtml(a.name)}</option>`).join("") + `</optgroup>` : "");
 
-    const guessedCategory = r.note ? categorize(r.note) : null;
+    const guesses = [...new Set(entries.map(r => (r.note ? categorize(r.note) : null)).filter(Boolean))];
+    const guessedCategory = guesses.length === 1 ? guesses[0] : null;
     const reimburseOptions = `<option value="">未指定</option>` +
       lifeExpenseCategories().map(c => `<option value="${escapeAttr(c.key)}" ${c.key === guessedCategory ? "selected" : ""}>${escapeHtml(c.key)}</option>`).join("");
 
+    const entryRows = entries.map(r => `
+      <li class="list-item">
+        <div class="item-main">
+          <div class="item-title">${r.note ? escapeHtml(r.note) : "（無備註）"}</div>
+          <div class="item-sub">${escapeHtml(r.date)}</div>
+        </div>
+        <div class="item-amount">${money(r.amount)}</div>
+      </li>`).join("");
+
     modalBody.innerHTML = `
-      <h3>${escapeHtml(r.debtor)} 已還款</h3>
-      <p class="hint-text" style="margin:0 0 4px;">${escapeHtml(r.debtor)}${r.note ? `・${escapeHtml(r.note)}` : ""}，應收 ${money(r.amount)}</p>
+      <h3>${escapeHtml(debtor)} 已還款</h3>
+      <p class="hint-text" style="margin:0 0 8px;">共 ${entries.length} 筆，合計 ${money(total)}</p>
+      <ul class="plain-list modal-scroll-list">${entryRows}</ul>
       <label class="field-label">收款方式</label>
       <select id="receivablePayMethod" class="text-input">${methodOptions}</select>
       <label class="field-label">抵減哪個生活支出分類？（選填）</label>
       <select id="receivablePayCategory" class="text-input">${reimburseOptions}</select>
-      <p class="hint-text">這筆錢會加入你選的帳戶餘額，但不計入一般收入，交易紀錄會寫成「${escapeHtml(r.debtor)}還款」。</p>
+      <p class="hint-text">這筆錢會加入你選的帳戶餘額，但不計入一般收入，交易紀錄會寫成「${escapeHtml(debtor)}還款」。</p>
       <div class="modal-actions">
         <button class="btn-cancel" id="receivablePayCancelBtn">取消</button>
         <button class="btn-save" id="receivablePaySaveBtn">確認收款</button>
@@ -2492,18 +2539,17 @@
         id: uid(),
         type: "income",
         date: new Date().toISOString().slice(0, 10),
-        item: `${r.debtor}還款`,
-        amount: r.amount,
+        item: `${debtor}還款`,
+        amount: total,
         category: "代墊款收入",
         paymentId,
         reimburseFor,
-        receivableId: r.id
+        receivableIds: entries.map(r => r.id)
       };
       state.transactions.unshift(tx);
       applyPaymentDelta(paymentId, tx.amount, -1);
 
-      r.done = true;
-      r.lastTxId = tx.id;
+      entries.forEach(r => { r.done = true; r.lastTxId = tx.id; });
 
       closeModal();
       renderReceivables(); renderHome(); renderChart(); renderAccounts(); renderWaterLevel();
@@ -2515,46 +2561,39 @@
     const list = document.getElementById("receivableList");
     const empty = document.getElementById("receivableEmpty");
     if (!list || !empty) return;
-    empty.style.display = state.receivables.length ? "none" : "block";
 
-    list.innerHTML = state.receivables.map(r => `
-      <li class="recurring-item">
-        <button class="checkbox ${r.done ? "checked" : ""}" data-toggle-receivable="${r.id}" aria-label="標記已收款">${r.done ? "✓" : ""}</button>
-        <div class="recurring-main">
-          <div class="recurring-name ${r.done ? "done" : ""}">${escapeHtml(r.debtor)}${r.note ? ` · ${escapeHtml(r.note)}` : ""}</div>
-          <div class="recurring-sub${r.done ? " recurring-auto" : ""}">${r.done ? "已收款" : `${escapeHtml(r.date)} 記錄的應收款項`}</div>
+    const groups = groupPendingReceivables();
+    empty.style.display = groups.length ? "none" : "block";
+
+    list.innerHTML = groups.map(g => `
+      <li class="receivable-group">
+        <div class="recurring-item receivable-group-head">
+          <button class="checkbox" data-toggle-group="${escapeAttr(g.debtor)}" aria-label="標記已收款"></button>
+          <div class="recurring-main">
+            <div class="recurring-name">${escapeHtml(g.debtor)}</div>
+            <div class="recurring-sub">${g.entries.length} 筆未收款</div>
+          </div>
+          <div class="recurring-amount">${money(g.total)}</div>
         </div>
-        <div class="recurring-amount ${r.done ? "done" : ""}">${money(r.amount)}</div>
-        <div class="recurring-actions">
-          <button class="item-edit" data-edit-receivable="${r.id}" aria-label="編輯">✎</button>
-          <button class="item-delete" data-del-receivable="${r.id}" aria-label="刪除">✕</button>
-        </div>
+        <ul class="receivable-entries">
+          ${g.entries.map(r => `
+            <li class="receivable-entry">
+              <span class="receivable-entry-note">${r.note ? escapeHtml(r.note) : "（無備註）"} · ${escapeHtml(r.date)}</span>
+              <span class="receivable-entry-amount">${money(r.amount)}</span>
+              <button class="item-edit" data-edit-receivable="${r.id}" aria-label="編輯">✎</button>
+              <button class="item-delete" data-del-receivable="${r.id}" aria-label="刪除">✕</button>
+            </li>`).join("")}
+        </ul>
       </li>`).join("");
 
     document.getElementById("receivableTotal").textContent =
-      money(state.receivables.filter(r => !r.done).reduce((s, r) => s + r.amount, 0));
+      money(groups.reduce((s, g) => s + g.total, 0));
 
-    list.querySelectorAll("[data-toggle-receivable]").forEach(btn => {
+    list.querySelectorAll("[data-toggle-group]").forEach(btn => {
       btn.addEventListener("click", () => {
-        const r = state.receivables.find(x => x.id === btn.getAttribute("data-toggle-receivable"));
-        if (!r) return;
-        if (r.done) {
-          // 取消勾選：把剛剛那筆代墊款收入紀錄一併刪掉，帳戶餘額跟著還原。
-          if (r.lastTxId) {
-            const idx = state.transactions.findIndex(t => t.id === r.lastTxId);
-            if (idx !== -1) {
-              const tx = state.transactions[idx];
-              applyPaymentDelta(tx.paymentId, tx.amount, +1);
-              state.transactions.splice(idx, 1);
-            }
-            r.lastTxId = null;
-          }
-          r.done = false;
-          renderReceivables(); renderHome(); renderChart(); renderAccounts(); renderWaterLevel();
-          saveState(state);
-        } else {
-          openReceivableSettleModal(r);
-        }
+        const debtor = btn.getAttribute("data-toggle-group");
+        const entries = state.receivables.filter(r => r.debtor === debtor && !r.done);
+        if (entries.length) openReceivableSettleModal(debtor, entries);
       });
     });
     list.querySelectorAll("[data-del-receivable]").forEach(btn => {
@@ -2562,7 +2601,7 @@
         const id = btn.getAttribute("data-del-receivable");
         const r = state.receivables.find(x => x.id === id);
         if (!r) return;
-        confirmDelete(`「${escapeHtml(r.debtor)}${r.note ? `・${escapeHtml(r.note)}` : ""}」（${money(r.amount)}）這筆應收款項刪除後無法復原${r.done ? "，已經收款的交易紀錄不會被一併刪除" : ""}。`, () => {
+        confirmDelete(`「${escapeHtml(r.debtor)}${r.note ? `・${escapeHtml(r.note)}` : ""}」（${money(r.amount)}）這筆應收款項刪除後無法復原。`, () => {
           state.receivables = state.receivables.filter(x => x.id !== id);
           renderReceivables();
           saveState(state);
@@ -2998,7 +3037,7 @@
 
         <h4>📝 待辦（週期性繳費）</h4>
         <ul>
-          <li>「別人欠我的錢」：+新增時填對象是誰、因為什麼事（選填，像記事本一樣打字就好）、金額；對方還錢後按掉勾選框，選收款方式（現金／銀行帳戶）、可選要抵減哪個生活支出分類，就會自動記一筆「{對象}還款」的代墊款收入（不計入一般收入），帳戶餘額同步增加；按錯了可以再按一次取消，紀錄會跟著還原</li>
+          <li>「別人欠我的錢」：+新增時填對象是誰、因為什麼事（選填，像記事本一樣打字就好）、金額；同一個人欠好幾次就一筆一筆記，系統會自動依對象分組加總（不用自己手動加）。對方還錢後按掉名字旁的勾選框，會一次結清這個人名下目前所有未收款的項目：選收款方式（現金／銀行帳戶）、可選要抵減哪個生活支出分類，就會自動記一筆「{對象}還款」的代墊款收入（不計入一般收入），帳戶餘額同步增加；勾錯了，跟其他交易一樣到「歷史記帳紀錄」把那筆「{對象}還款」刪掉，應收款項會自動還原</li>
           <li>新增固定要繳的項目，設定每月幾號重置為未繳納</li>
           <li>可以選「手動勾選」（自己按已繳、選付款方式）或「自動扣款」（先設定好扣款方式跟要扣到哪個月，時間一到系統自動記一筆，不用自己按）</li>
           <li>「本月帳戶水位提醒」會自動加總這個月每個帳戶會被自動扣款/定期定額扣走多少錢，提醒你那個帳戶至少要留多少</li>
