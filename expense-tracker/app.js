@@ -416,19 +416,55 @@
   // 所有會改變資料的操作，最後都呼叫這個函式：
   // 1) 先寫本機 localStorage（永遠成功，離線也能用）
   // 2) 更新頁面內嵌的 app-state（讓「發布出去的這份文件」帶有最新資料）
-  // 3) 若有雲端 capability，把整份文件發布出去，其他裝置打開同一連結
-  //    就會看到最新資料。發布衝突是正常情況（例如兩台裝置差不多時間
-  //    各自存了一筆），不重試 —— 之後 Claude 平台會把畫面同步回最終版本。
+  // 3) 若有雲端 capability，排進一個「停手後才真的發布」的佇列（見下面
+  //    schedulePublish 的說明），其他裝置打開同一連結就會看到最新資料。
+  //    發布衝突是正常情況（例如兩台裝置差不多時間各自存了一筆），不
+  //    重試 —— 之後 Claude 平台會把畫面同步回最終版本。
   async function saveState(s) {
     s.updatedAt = Date.now();
     persistLocal(s);
     embedStateInDom(s);
     if (!cloudApi) return;
+    schedulePublish();
+  }
 
-    // document.documentElement.outerHTML 要把整份頁面（含所有交易紀錄）
-    // 同步序列化成字串，資料越多這件事越不是瞬間完成——如果緊接著使用者
-    // 剛做完的操作就同步做，畫面剛更新完的那一瞬間容易感覺頓一下。用
-    // setTimeout 讓瀏覽器先把剛剛的畫面變化畫出來，序列化跟真正發布到
+  // 連續快速記好幾筆（例如一口氣把這個月忘記記的全部補上）時，不要
+  // 每記一筆就立刻發布一次——document.documentElement.outerHTML 要把
+  // 整份頁面（含所有交易紀錄）序列化成字串才能發布，資料越多越不是
+  // 瞬間完成；如果緊接著使用者就開始打下一筆，很容易在打字打到一半時
+  // 被這次發布、或平台收到發布後重新套用畫面的過程打斷，變成「打到
+  // 一半畫面就跳開」。改成「停手一小段時間後才真的發布」：短時間內
+  // 連續好幾次存檔只會重置這個計時器，不會真的各自發布一次；真正發布
+  // 的永遠是當下最新的完整資料，不會漏掉中間任何一筆。本機
+  // localStorage 每次 saveState() 都還是立刻寫入，不會因為延後發布
+  // 雲端同步而有資料遺失的風險，只有「這份資料多久才會同步到別的
+  // 裝置」會晚一點點。
+  const PUBLISH_DEBOUNCE_MS = 1200;
+  let pendingPublishTimer = null;
+
+  function schedulePublish() {
+    clearTimeout(pendingPublishTimer);
+    pendingPublishTimer = setTimeout(() => { pendingPublishTimer = null; publishNow(); }, PUBLISH_DEBOUNCE_MS);
+  }
+
+  // 使用者記完就切分頁、切到背景分頁或關掉視窗時，還沒真正發布出去的
+  // 最新資料不要卡著等那個延遲時間，立刻補發一次。
+  function flushPendingPublish() {
+    if (pendingPublishTimer) {
+      clearTimeout(pendingPublishTimer);
+      pendingPublishTimer = null;
+      publishNow();
+    }
+  }
+  window.addEventListener("beforeunload", flushPendingPublish);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) flushPendingPublish();
+  });
+
+  async function publishNow() {
+    if (!cloudApi) return;
+
+    // 讓瀏覽器先把最新一次操作的畫面變化畫出來，序列化跟真正發布到
     // 雲端的動作延到下一個 tick 再做。
     await new Promise((resolve) => setTimeout(resolve, 0));
 
