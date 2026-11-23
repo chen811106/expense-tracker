@@ -434,9 +434,16 @@
 
     // 發布是非同步的，跟使用者接下來的操作（例如切換到下一個欄位打字）
     // 有可能重疊；平台同步完成、重新套用畫面時，正在輸入的欄位或原本
-    // 停留的捲動位置可能被打斷、跳掉。記住發布前 focus 在哪個欄位、
-    // 捲到哪裡，發布結束後主動拉回來，避免「畫面突然被拉走」的感覺。
-    const activeId = document.activeElement && document.activeElement.id;
+    // 停留的捲動位置「可能」被打斷、跳掉，所以記住發布前 focus 在哪個
+    // 欄位、捲到哪裡。但只有「真的被平台清掉」時才拉回來——不能無條件
+    // 套用，原本這裡不分青紅皂白一律 focus 回去、捲回去，點下「新增
+    // 紀錄」之類的按鈕後 activeElement 其實是那顆按鈕本身（不是文字
+    // 欄位），於是發布完成的那一刻（可能是使用者已經往下滑、點別的
+    // 東西之後）會把按鈕重新 focus、硬把捲動位置拉回剛送出那一刻，
+    // 畫面因此被拉走、點不到下面的東西——這就是這裡原本的 bug。
+    const RESTORABLE_TAGS = ["INPUT", "SELECT", "TEXTAREA"];
+    const activeEl = document.activeElement;
+    const activeId = (activeEl && RESTORABLE_TAGS.includes(activeEl.tagName)) ? activeEl.id : null;
     const contentEl = document.querySelector(".content");
     const scrollTop = contentEl ? contentEl.scrollTop : 0;
 
@@ -446,12 +453,20 @@
     } catch (e) {
       /* 衝突或離線：不重試，交給平台把畫面同步回最新版本 */
     } finally {
-      if (activeId) {
+      // 只在發布完成後「整個頁面都沒有東西在 focus」時才搶救回來
+      // （代表 focus 真的被平台重新套用畫面的過程清掉了），使用者這段
+      // 期間自己點了別的欄位、別的分頁，activeElement 會是別的東西，
+      // 這裡就不動它。
+      if (activeId && (!document.activeElement || document.activeElement === document.body)) {
         const el = document.getElementById(activeId);
-        if (el && document.activeElement !== el) el.focus({ preventScroll: true });
+        if (el) el.focus({ preventScroll: true });
       }
+      // 同理，只在捲動位置被平台同步意外歸零時才拉回來；使用者自己在
+      // 等待發布完成的這段時間捲去別的地方，不要打斷他、把畫面拉走。
       const contentElAfter = document.querySelector(".content");
-      if (contentElAfter) contentElAfter.scrollTop = scrollTop;
+      if (contentElAfter && contentElAfter.scrollTop === 0 && scrollTop > 0) {
+        contentElAfter.scrollTop = scrollTop;
+      }
     }
   }
 
