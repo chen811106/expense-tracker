@@ -107,8 +107,21 @@
           </div>
         </div>
 
+        <label class="checkbox-label">
+          <input type="checkbox" id="batchModeToggle">
+          <span>一次新增多筆（先加入清單，不會中途發布，最後統一確認）</span>
+        </label>
+
         <button id="addBtn" class="primary-btn">新增紀錄</button>
         <p class="hint-text" id="formHint"></p>
+
+        <div id="batchQueueSection" style="display:none;">
+          <div class="section-head" style="margin-top:14px;margin-bottom:6px;">
+            <h2 style="font-size:13px;">待確認清單</h2>
+          </div>
+          <ul id="batchQueueList" class="plain-list"></ul>
+          <button id="batchConfirmBtn" class="primary-btn" style="margin-top:10px;">確認新增全部</button>
+        </div>
       </div>
 
       <div class="card recent-list">

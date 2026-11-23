@@ -652,6 +652,240 @@
   const reimburseCategoryField = document.getElementById("reimburseCategoryField");
   const reimburseCategorySelect = document.getElementById("reimburseCategorySelect");
 
+  /* ---------------- 一次新增多筆（批次佇列） ----------------
+     「停手後才發布」的 debounce 只能降低發布次數，碰到使用者本來就
+     打算連續記一長串、或某一筆剛好想多想幾秒才選帳戶，還是可能撞上
+     發布/平台同步那一刻。這裡提供另一個更直接的做法：連續記的時候
+     完全不動到 state、也完全不發布，只先加進本機這份暫存清單
+     （batchQueue，跟 state 分開、不會被發布出去），全部想記的都加完
+     之後，開一個確認視窗讓使用者整批看一次、有打錯的可以個別修改，
+     按下「確認新增全部」才真的一次記進 state、只發布這一次。
+     batchQueue 額外存一份在 localStorage（不是 state 的一部分，也
+     不會隨 state 發布出去），只是為了防止使用者正在排隊到一半時
+     不小心重新整理頁面、把還沒確認的草稿弄丟。 */
+  const batchModeToggle = document.getElementById("batchModeToggle");
+  const batchQueueSection = document.getElementById("batchQueueSection");
+  const batchQueueList = document.getElementById("batchQueueList");
+  const batchConfirmBtn = document.getElementById("batchConfirmBtn");
+  const BATCH_QUEUE_STORAGE_KEY = "healing-ledger-v1-batch-queue";
+
+  let batchQueue = (() => {
+    try {
+      const raw = localStorage.getItem(BATCH_QUEUE_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) { return []; }
+  })();
+  let batchMode = batchQueue.length > 0;
+  batchModeToggle.checked = batchMode;
+
+  function persistBatchQueue() {
+    try { localStorage.setItem(BATCH_QUEUE_STORAGE_KEY, JSON.stringify(batchQueue)); } catch (e) { /* 空間不足等情況靜默略過 */ }
+  }
+
+  function updateAddBtnLabel() {
+    if (batchMode) { addBtn.textContent = "加入清單"; return; }
+    addBtn.textContent = entryType === "income" ? "新增收入" : "新增紀錄";
+  }
+
+  function renderBatchQueue() {
+    persistBatchQueue();
+    batchQueueSection.style.display = batchQueue.length ? "" : "none";
+    batchQueueList.innerHTML = batchQueue.map(d => `
+      <li class="list-item">
+        <span class="item-dot" style="background:${categoryColor(d.category, d.type)}"></span>
+        <div class="item-main">
+          <div class="item-title">${escapeHtml(d.item)}</div>
+          <div class="item-sub">${escapeHtml(d.category)} · ${escapeHtml(paymentLabel(d.paymentId))}</div>
+        </div>
+        <div class="item-amount${d.type === "income" ? " income" : ""}">${d.type === "income" ? "+" : "-"}${money(d.amount)}</div>
+        <button class="item-edit" data-edit-batch="${d._qid}" aria-label="編輯">✎</button>
+        <button class="item-delete" data-del-batch="${d._qid}" aria-label="刪除">✕</button>
+      </li>`).join("");
+    batchConfirmBtn.textContent = `確認新增全部（${batchQueue.length} 筆）`;
+
+    batchQueueList.querySelectorAll("[data-del-batch]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        batchQueue = batchQueue.filter(d => d._qid !== btn.getAttribute("data-del-batch"));
+        renderBatchQueue();
+      });
+    });
+    batchQueueList.querySelectorAll("[data-edit-batch]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const draft = batchQueue.find(d => d._qid === btn.getAttribute("data-edit-batch"));
+        if (draft) openBatchEntryEditModal(draft);
+      });
+    });
+  }
+
+  // 編輯佇列裡的某一筆草稿（金額打錯、項目打錯字…），存檔時重新跑一次
+  // 既有的 categorize()／categorizeIncome() 判斷分類，除非這筆原本就是
+  // 「代墊款收入」（使用者在新增時特別勾選過），那個身分予以保留，不
+  // 因為改了項目文字就被判斷掉。onDone 讓呼叫端決定存檔/取消後要做
+  // 什麼——從佇列清單直接點編輯，就只重畫佇列；從「確認新增」視窗點
+  // 編輯，存檔/取消後要回到那個確認視窗，而不是留在空白畫面。
+  function openBatchEntryEditModal(draft, onDone) {
+    let editType = draft.type;
+    const wasReimbursement = draft.category === "代墊款收入";
+
+    modalBody.innerHTML = `
+      <h3>編輯這筆待新增紀錄</h3>
+      <div class="type-toggle" id="batchEditType">
+        <button type="button" class="type-btn ${editType === "expense" ? "active" : ""}" data-type="expense">支出</button>
+        <button type="button" class="type-btn ${editType === "income" ? "active" : ""}" data-type="income">收入</button>
+      </div>
+      <label class="field-label">項目</label>
+      <input id="batchEditItem" class="text-input" value="${escapeAttr(draft.item)}">
+      <div class="row">
+        <div class="field">
+          <label class="field-label">金額</label>
+          <input id="batchEditAmount" class="text-input" type="number" min="0" value="${draft.amount}">
+        </div>
+        <div class="field">
+          <label class="field-label">支付方式</label>
+          <select id="batchEditPayment" class="text-input"></select>
+        </div>
+      </div>
+      <p class="hint-text" id="batchEditHint"></p>
+      <div class="modal-actions">
+        <button class="btn-cancel" id="batchEditCancelBtn">取消</button>
+        <button class="btn-save" id="batchEditSaveBtn">儲存</button>
+      </div>`;
+    modalOverlay.classList.add("open");
+
+    const paymentSelectEl = modalBody.querySelector("#batchEditPayment");
+    renderPaymentOptions(paymentSelectEl, { excludeCards: editType === "income" });
+    paymentSelectEl.value = draft.paymentId;
+
+    modalBody.querySelector("#batchEditType").addEventListener("click", (e) => {
+      const btn = e.target.closest(".type-btn");
+      if (!btn) return;
+      editType = btn.getAttribute("data-type");
+      modalBody.querySelector("#batchEditType").querySelectorAll(".type-btn").forEach(b => b.classList.toggle("active", b === btn));
+      renderPaymentOptions(paymentSelectEl, { excludeCards: editType === "income" });
+    });
+
+    const finish = () => { closeModal(); if (onDone) onDone(); else renderBatchQueue(); };
+    modalBody.querySelector("#batchEditCancelBtn").addEventListener("click", finish);
+    modalBody.querySelector("#batchEditSaveBtn").addEventListener("click", () => {
+      const item = modalBody.querySelector("#batchEditItem").value.trim();
+      const amount = parseFloat(modalBody.querySelector("#batchEditAmount").value);
+      const paymentId = paymentSelectEl.value;
+      const hint = modalBody.querySelector("#batchEditHint");
+      if (!item) { hint.textContent = "請輸入項目"; return; }
+      if (!amount || amount <= 0) { hint.textContent = "請輸入有效金額"; return; }
+
+      draft.type = editType;
+      draft.item = item;
+      draft.amount = amount;
+      draft.paymentId = paymentId;
+      draft.category = (wasReimbursement && editType === "income")
+        ? "代墊款收入"
+        : (editType === "income" ? categorizeIncome(item, { skip: ["代墊款收入"] }) : categorize(item));
+      if (!(editType === "income" && draft.category === "代墊款收入")) draft.reimburseFor = null;
+
+      finish();
+    });
+  }
+
+  // 確認視窗：使用者在佇列裡全部加完之後，點「確認新增全部」先整批看
+  // 一次，有問題還能再點 ✎ 修改或 ✕ 移除，按下視窗裡的「確認新增全部」
+  // 才真的一次記進 state、只發布這一次。
+  function openBatchConfirmModal() {
+    if (!batchQueue.length) return;
+    modalBody.innerHTML = `
+      <h3>確認新增這 ${batchQueue.length} 筆紀錄</h3>
+      <p class="hint-text" style="margin:0 0 8px;">確認沒問題後才會真的記進去、同步到雲端；發現打錯可以點 ✎ 修改。</p>
+      <ul class="plain-list modal-scroll-list" id="batchConfirmList"></ul>
+      <div class="modal-actions">
+        <button class="btn-cancel" id="batchConfirmBackBtn">返回繼續新增</button>
+        <button class="btn-save" id="batchConfirmAllBtn">確認新增全部</button>
+      </div>`;
+    modalOverlay.classList.add("open");
+    renderBatchConfirmList();
+
+    modalBody.querySelector("#batchConfirmBackBtn").addEventListener("click", closeModal);
+    modalBody.querySelector("#batchConfirmAllBtn").addEventListener("click", () => {
+      commitBatchQueue();
+      closeModal();
+    });
+  }
+
+  function renderBatchConfirmList() {
+    const list = modalBody.querySelector("#batchConfirmList");
+    if (!list) return;
+    list.innerHTML = batchQueue.map(d => `
+      <li class="list-item">
+        <span class="item-dot" style="background:${categoryColor(d.category, d.type)}"></span>
+        <div class="item-main">
+          <div class="item-title">${escapeHtml(d.item)}</div>
+          <div class="item-sub">${escapeHtml(d.category)} · ${escapeHtml(paymentLabel(d.paymentId))}</div>
+        </div>
+        <div class="item-amount${d.type === "income" ? " income" : ""}">${d.type === "income" ? "+" : "-"}${money(d.amount)}</div>
+        <button class="item-edit" data-edit-batch-confirm="${d._qid}" aria-label="編輯">✎</button>
+        <button class="item-delete" data-del-batch-confirm="${d._qid}" aria-label="刪除">✕</button>
+      </li>`).join("") || `<li class="empty-hint" style="display:block;">清單已經空了</li>`;
+
+    list.querySelectorAll("[data-edit-batch-confirm]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const draft = batchQueue.find(d => d._qid === btn.getAttribute("data-edit-batch-confirm"));
+        if (draft) openBatchEntryEditModal(draft, openBatchConfirmModal);
+      });
+    });
+    list.querySelectorAll("[data-del-batch-confirm]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        batchQueue = batchQueue.filter(d => d._qid !== btn.getAttribute("data-del-batch-confirm"));
+        persistBatchQueue();
+        if (!batchQueue.length) { closeModal(); renderBatchQueue(); return; }
+        renderBatchConfirmList();
+        renderBatchQueue();
+      });
+    });
+  }
+
+  // 真正把佇列裡的每一筆變成正式交易：日期統一用「確認當下」，逐筆
+  // unshift（跟單筆新增時一樣，所以結清後最近加入的那筆會排在最上
+  // 面）、逐筆套用帳戶增減，全部跑完只呼叫一次 saveState()——這一整批
+  // 不管排了幾筆，雲端只會收到一次發布。
+  function commitBatchQueue() {
+    if (!batchQueue.length) return;
+    const today = new Date().toISOString().slice(0, 10);
+    batchQueue.forEach(d => {
+      const tx = {
+        id: uid(),
+        type: d.type,
+        date: today,
+        item: d.item,
+        amount: d.amount,
+        category: d.category,
+        paymentId: d.paymentId,
+        reimburseFor: d.reimburseFor
+      };
+      state.transactions.unshift(tx);
+      applyPaymentDelta(d.paymentId, d.amount, d.type === "expense" ? +1 : -1);
+    });
+    const count = batchQueue.length;
+    batchQueue = [];
+    renderBatchQueue();
+    renderHome(); renderChart(); renderAccounts(); renderCards();
+    saveState(state);
+    showHint(`已一次新增 ${count} 筆紀錄 ✓`);
+  }
+
+  batchModeToggle.addEventListener("change", () => {
+    if (!batchModeToggle.checked && batchQueue.length) {
+      // 關掉多筆模式時清單裡還有東西：先維持勾選、強制跳出確認視窗，
+      // 不要讓使用者沒注意到還有未確認的草稿就默默不見。
+      batchModeToggle.checked = true;
+      openBatchConfirmModal();
+      return;
+    }
+    batchMode = batchModeToggle.checked;
+    updateAddBtnLabel();
+  });
+
+  renderBatchQueue();
+
   function renderReimburseCategoryOptions() {
     reimburseCategorySelect.innerHTML = `<option value="">未指定</option>` +
       lifeExpenseCategories().map(c => `<option value="${escapeAttr(c.key)}">${escapeHtml(c.key)}</option>`).join("");
@@ -680,6 +914,7 @@
   typeToggle.querySelectorAll(".type-btn").forEach(b =>
     b.classList.toggle("active", b.getAttribute("data-type") === entryType)
   );
+  updateAddBtnLabel();
 
   typeToggle.addEventListener("click", (e) => {
     const btn = e.target.closest(".type-btn");
@@ -695,13 +930,12 @@
       itemLabelEl.textContent = "收入項目";
       itemInput.placeholder = "例如：薪資入帳、股利、生活費";
       paymentLabelEl.textContent = "存入帳戶";
-      addBtn.textContent = "新增收入";
     } else {
       itemLabelEl.textContent = "花費項目";
       itemInput.placeholder = "例如：星巴克拿鐵、加油、房租";
       paymentLabelEl.textContent = "支付方式";
-      addBtn.textContent = "新增紀錄";
     }
+    updateAddBtnLabel();
     renderPaymentOptions(paymentSelect, { excludeCards: entryType === "income" });
     updateCategoryPreview();
   });
@@ -761,17 +995,37 @@
     const category = isReimbursement ? "代墊款收入" : (entryType === "income" ? categorizeIncome(item, { skip: ["代墊款收入"] }) : categorize(item));
     const reimburseFor = isReimbursement ? (reimburseCategorySelect.value || null) : null;
 
-    const tx = {
-      id: uid(),
-      type: entryType,
-      date: new Date().toISOString().slice(0, 10),
-      item, amount, category, paymentId,
-      reimburseFor
-    };
-    state.transactions.unshift(tx);
-    // 支出：sign +1（帳戶減少／卡片未出帳增加）。收入：sign -1，剛好是同一個
-    // 函式反過來的效果（帳戶增加），現金則兩種情況都不影響任何帳戶。
-    applyPaymentDelta(paymentId, amount, entryType === "expense" ? +1 : -1);
+    if (batchMode) {
+      // 多筆模式：只加進本機的待確認清單，完全不動 state、也完全不
+      // 發布——這樣連續記好幾筆的過程中，不會有任何一次發布/平台同步
+      // 跑出來打斷正在輸入的下一筆。等使用者在確認視窗全部看過、按下
+      // 「確認新增全部」才真的一次記進去、只發布這一次。
+      batchQueue.push({ _qid: uid(), type: entryType, item, amount, category, paymentId, reimburseFor });
+      renderBatchQueue();
+      showHint(`已加入待確認清單「${item}」，目前共 ${batchQueue.length} 筆`);
+    } else {
+      const tx = {
+        id: uid(),
+        type: entryType,
+        date: new Date().toISOString().slice(0, 10),
+        item, amount, category, paymentId,
+        reimburseFor
+      };
+      state.transactions.unshift(tx);
+      // 支出：sign +1（帳戶減少／卡片未出帳增加）。收入：sign -1，剛好是同一個
+      // 函式反過來的效果（帳戶增加），現金則兩種情況都不影響任何帳戶。
+      applyPaymentDelta(paymentId, amount, entryType === "expense" ? +1 : -1);
+
+      renderHome();
+      renderChart();
+      renderAccounts();
+      renderCards();
+      saveState(state);
+
+      showHint(isReimbursement
+        ? `已記錄「${item}」為代墊款收入${reimburseFor ? `，抵減「${reimburseFor}」` : "（尚未指定抵減分類）"} ✓`
+        : `已記錄「${item}」，歸類於${category} ✓`);
+    }
 
     itemInput.value = "";
     amountInput.value = "";
@@ -781,23 +1035,15 @@
     reimburseCategoryField.style.display = "none";
     reimburseCategorySelect.value = "";
     reimburseManuallySet = false;
-    showHint(isReimbursement
-      ? `已記錄「${item}」為代墊款收入${reimburseFor ? `，抵減「${reimburseFor}」` : "（尚未指定抵減分類）"} ✓`
-      : `已記錄「${item}」，歸類於${category} ✓`);
     // 新增完主動收起鍵盤：不然如果原本是從「金額」欄位按下鍵盤上的
     // 送出鍵觸發，欄位清空後 focus 還留在原地、鍵盤沒關，之後畫面
     // 重新排版（例如鍵盤自己決定要不要收起來）時機不固定，會有種
     // 「畫面自己跳走」的感覺。這裡直接、確定地收起鍵盤。
     itemInput.blur();
     amountInput.blur();
-
-    renderHome();
-    renderChart();
-    renderAccounts();
-    renderCards();
-
-    saveState(state);
   });
+
+  batchConfirmBtn.addEventListener("click", openBatchConfirmModal);
 
   function showHint(msg) {
     formHint.textContent = msg;
@@ -3059,6 +3305,7 @@
           <li>「本月生活支出/生活收入/生活結餘」只統計一般生活開銷，不含投資、調整、代墊款收入；投資的資金流出入另外在「圖表」分頁的「本月投資資金流向」看，兩者分開算，不會互相影響</li>
           <li>切到「收入」會看到「這是代墊款收入」勾選框，隨時可以自己手動勾，不是只有偵測到「還款」「朋友還款」「代墊還款」之類的關鍵字才會出現；勾選後可以選要抵減哪個生活支出分類（選填），沒選的話之後能在「歷史記帳紀錄」補選。代墊款收入不是真正的收入，不會讓一般收入虛增</li>
           <li>「信用卡還款」「房貸還款」之類的文字不會被誤判成代墊款收入——這類排除關鍵字的優先級比「還款」更高</li>
+          <li>勾選「一次新增多筆」：每筆只會先加進下面的待確認清單，完全不會發布出去，所以連續記一長串不會被中途的雲端同步打斷；全部記完按「確認新增全部」，開一個視窗整批看一次，打錯的點 ✎ 修改、不要的點 ✕ 移除，都沒問題再按視窗裡的「確認新增全部」，才會一次記進去、只發布這一次</li>
         </ul>
 
         <h4>📊 圖表</h4>
