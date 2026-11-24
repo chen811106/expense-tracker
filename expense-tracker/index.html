@@ -209,15 +209,20 @@
           <span>帳戶總餘額</span>
           <strong id="accountsTotal">$0</strong>
         </div>
-        <p class="hint-text">記帳時若選擇銀行帳戶付款，餘額會自動連動扣除；帳戶之間互轉不會影響本月支出/收入統計。</p>
+      </div>
+
+      <div class="card">
+        <div class="section-head">
+          <h2>本月帳戶水位提醒</h2>
+        </div>
+        <ul id="waterLevelList" class="plain-list"></ul>
+        <p class="empty-hint" id="waterLevelEmpty">目前沒有設定自動扣款或定期定額的項目</p>
       </div>
 
       <div class="card">
         <div class="section-head">
           <h2>資料管理</h2>
         </div>
-        <p class="hint-text" style="margin-top:0;">把逐月的支出/收入/信用卡繳款紀錄整理成一段文字，方便自己複製保存；也可以在保存好之後把這些紀錄清空，帳戶、信用卡、現金餘額、待辦清單、分類設定都不會被動到。</p>
-        <p class="hint-text">建議每 3 個月匯出一次文字存起來，養成定期備份的習慣，不用等到資料很多才做。資料是存在這個瀏覽器裡的，請不要清除瀏覽器的「瀏覽資料/快取」，清掉的話會連同這裡的記帳資料一起消失、無法復原。</p>
         <button class="add-mini secondary" id="historyBtn" style="width:100%;margin-bottom:10px;">📜 歷史記帳紀錄</button>
         <button class="add-mini secondary" id="reimburseReviewBtn" style="width:100%;margin-bottom:10px;">🔍 檢查可能的代墊款收入</button>
         <button class="add-mini secondary" id="exportBtn" style="width:100%;">📤 匯出/清理記帳紀錄</button>
@@ -240,10 +245,9 @@
     <section id="tab-checklist" class="tab-panel">
       <div class="card">
         <div class="section-head">
-          <h2>別人欠我的錢</h2>
+          <h2>代墊款</h2>
           <button class="add-mini" id="addReceivableBtn">+ 新增</button>
         </div>
-        <p class="hint-text" style="margin-top:0;">同一個人欠好幾次，一筆一筆記就好，系統會自動依對象加總；對方還錢時按掉，選收款方式會一次結清該對象目前所有未收款的項目（不計入一般收入，用「對象+還款」記錄，例如「Jerry還款」）。</p>
         <ul id="receivableList" class="plain-list"></ul>
         <p class="empty-hint" id="receivableEmpty">目前沒有人欠你錢</p>
         <div class="total-row">
@@ -254,20 +258,9 @@
 
       <div class="card">
         <div class="section-head">
-          <h2>本月帳戶水位提醒</h2>
-        </div>
-        <p class="hint-text" style="margin-top:0;">依照這個月會自動扣款的固定繳費、加上定期定額的預設金額，抓出每個帳戶至少要留多少錢。</p>
-        <ul id="waterLevelList" class="plain-list"></ul>
-        <p class="empty-hint" id="waterLevelEmpty">目前沒有設定自動扣款或定期定額的項目</p>
-      </div>
-
-      <div class="card">
-        <div class="section-head">
           <h2>週期性繳費清單</h2>
           <button class="add-mini" id="addRecurringBtn">+ 新增項目</button>
         </div>
-
-        <p class="hint-text">每一筆都可以自訂「每月幾號」自動重置為未繳納，繳款截止日不同就設不同天數即可。</p>
 
         <ul id="recurringList" class="plain-list"></ul>
         <p class="empty-hint" id="recurringEmpty">還沒有固定繳費項目</p>
@@ -278,8 +271,6 @@
           <h2>每月定期定額</h2>
           <button class="add-mini" id="addDcaBtn">+ 新增定期定額</button>
         </div>
-
-        <p class="hint-text">實際扣款金額常會有零頭差異，扣款後按一下、自己填實際扣了多少，會自動記一筆分類為「投資」的支出。</p>
 
         <ul id="dcaList" class="plain-list"></ul>
         <p class="empty-hint" id="dcaEmpty">還沒有定期定額項目</p>

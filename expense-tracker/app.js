@@ -2135,7 +2135,7 @@
             <div class="limit-text">可用額度 ${money(Math.max(0, limit - totalOwed))} ／ 額度 ${money(limit)}</div>
           </div>` : "";
       const unbilledNote = unbilled > 0
-        ? `<div class="credit-card-unbilled-note">已刷卡未出帳 ${money(unbilled)}（下期帳單，${c.billingDay} 號結帳後才會列入應繳）</div>`
+        ? `<div class="credit-card-unbilled-note">未出帳金額 ${money(unbilled)}</div>`
         : "";
       return `
         <li class="credit-card ${CARD_THEMES[i % CARD_THEMES.length]}">
@@ -2191,7 +2191,7 @@
       fields: [
         { key: "name", label: "卡片名稱", type: "text", placeholder: "" },
         { key: "statementAmount", label: "本期應繳金額", type: "number", placeholder: "" },
-        { key: "unbilled", label: "已刷卡未出帳金額", type: "number", placeholder: "" },
+        { key: "unbilled", label: "未出帳金額", type: "number", placeholder: "" },
         { key: "limit", label: "信用卡額度", type: "number", placeholder: "" },
         { key: "billingDay", label: "結帳日", type: "number", placeholder: "" },
         { key: "dueDay", label: "繳款截止日", type: "number", placeholder: "" }
@@ -3335,7 +3335,7 @@
 
         <h4>📝 待辦（週期性繳費）</h4>
         <ul>
-          <li>「別人欠我的錢」：+新增時填對象是誰、因為什麼事（選填，像記事本一樣打字就好）、金額；同一個人欠好幾次就一筆一筆記，系統會自動依對象分組加總（不用自己手動加）。對方還錢後按掉名字旁的勾選框，會一次結清這個人名下目前所有未收款的項目：選收款方式（現金／銀行帳戶）、可選要抵減哪個生活支出分類，就會自動記一筆「{對象}還款」的代墊款收入（不計入一般收入），帳戶餘額同步增加；勾錯了，跟其他交易一樣到「歷史記帳紀錄」把那筆「{對象}還款」刪掉，應收款項會自動還原</li>
+          <li>「代墊款」：+新增時填對象是誰、因為什麼事（選填，像記事本一樣打字就好）、金額；同一個人欠好幾次就一筆一筆記，系統會自動依對象分組加總（不用自己手動加）。對方還錢後按掉名字旁的勾選框，會一次結清這個人名下目前所有未收款的項目：選收款方式（現金／銀行帳戶）、可選要抵減哪個生活支出分類，就會自動記一筆「{對象}還款」的代墊款收入（不計入一般收入），帳戶餘額同步增加；勾錯了，跟其他交易一樣到「歷史記帳紀錄」把那筆「{對象}還款」刪掉，應收款項會自動還原</li>
           <li>新增固定要繳的項目，設定每月幾號重置為未繳納</li>
           <li>可以選「手動勾選」（自己按已繳、選付款方式）或「自動扣款」（先設定好扣款方式跟要扣到哪個月，時間一到系統自動記一筆，不用自己按）</li>
           <li>「本月帳戶水位提醒」會自動加總這個月每個帳戶會被自動扣款/定期定額扣走多少錢，提醒你那個帳戶至少要留多少</li>
