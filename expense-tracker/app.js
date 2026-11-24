@@ -928,11 +928,11 @@
 
     if (entryType === "income") {
       itemLabelEl.textContent = "收入項目";
-      itemInput.placeholder = "例如：薪資入帳、股利、生活費";
+      itemInput.placeholder = "";
       paymentLabelEl.textContent = "存入帳戶";
     } else {
       itemLabelEl.textContent = "花費項目";
-      itemInput.placeholder = "例如：星巴克拿鐵、加油、房租";
+      itemInput.placeholder = "";
       paymentLabelEl.textContent = "支付方式";
     }
     updateAddBtnLabel();
@@ -951,7 +951,7 @@
       : (entryType === "income" ? categorizeIncome(text, { skip: ["代墊款收入"] }) : categorize(text));
     if (isReimb) {
       catDot.style.background = categoryColor("代墊款收入", "income");
-      catLabel.textContent = "代墊款收入（不計入一般收入，用來抵減生活支出）";
+      catLabel.textContent = "代墊款收入";
       catLabel.style.color = "var(--text-primary)";
     } else if (guess) {
       catDot.style.background = categoryColor(guess, entryType);
@@ -1172,10 +1172,10 @@
       <div id="txEditReimburseBlock" ${editType === "income" ? "" : 'style="display:none;"'}>
         <label class="checkbox-label">
           <input type="checkbox" id="txEditReimburseCheck" ${tx.category === "代墊款收入" ? "checked" : ""}>
-          <span>這是代墊款收入（不列入一般收入，用來抵減生活支出）</span>
+          <span>這是代墊款收入</span>
         </label>
         <div id="txEditReimburseCategoryField" ${tx.category === "代墊款收入" ? "" : 'style="display:none;"'}>
-          <label class="field-label">抵減哪個生活支出分類？（選填）</label>
+          <label class="field-label">抵減哪個生活支出分類？</label>
           <select id="txEditReimburseCategory" class="text-input"></select>
         </div>
       </div>
@@ -1256,7 +1256,7 @@
   function openHistoryModal() {
     modalBody.innerHTML = `
       <h3>歷史記帳紀錄</h3>
-      <p class="hint-text" style="margin:0 0 8px;">共 ${state.transactions.length} 筆，點 ✎ 可以直接修改內容（例如不小心把收入記成支出），不用刪掉重新輸入。</p>
+      <p class="hint-text" style="margin:0 0 8px;">共 ${state.transactions.length} 筆，點 ✎ 可以直接修改內容，不用刪掉重新輸入。</p>
       <ul class="plain-list modal-scroll-list" id="historyList">${state.transactions.map(txRowHtml).join("") || `<li class="empty-hint" style="display:block;">還沒有任何紀錄</li>`}</ul>
       <div class="modal-actions">
         <button class="btn-save" id="historyCloseBtn" style="flex:1;">關閉</button>
@@ -1862,8 +1862,8 @@
     openModal({
       title: "新增銀行帳戶",
       fields: [
-        { key: "name", label: "帳戶名稱", type: "text", placeholder: "例如：中國信託" },
-        { key: "balance", label: "目前餘額", type: "number", placeholder: "0" }
+        { key: "name", label: "帳戶名稱", type: "text", placeholder: "" },
+        { key: "balance", label: "目前餘額", type: "number", placeholder: "" }
       ],
       onSave: (v) => {
         if (!v.name) return;
@@ -1899,9 +1899,9 @@
       <label class="field-label">轉到</label>
       <select id="transferTo" class="text-input">${accountOptions}</select>
       <label class="field-label">金額</label>
-      <input id="transferAmount" class="text-input" type="number" min="0" placeholder="0">
-      <label class="field-label">備註（選填）</label>
-      <input id="transferNote" class="text-input" placeholder="例如：生活費撥款">
+      <input id="transferAmount" class="text-input" type="number" min="0" placeholder="">
+      <label class="field-label">備註</label>
+      <input id="transferNote" class="text-input" placeholder="">
       <p class="hint-text" id="transferHint"></p>
       <div class="modal-actions">
         <button class="btn-cancel" id="transferCancelBtn">取消</button>
@@ -2189,12 +2189,12 @@
     openModal({
       title: existing ? "編輯信用卡" : "新增信用卡",
       fields: [
-        { key: "name", label: "卡片名稱", type: "text", placeholder: "例如：玉山 Only 卡" },
-        { key: "statementAmount", label: "本期應繳金額（繳款截止日前要繳的錢）", type: "number", placeholder: "0" },
-        { key: "unbilled", label: "已刷卡未出帳金額（下期才要繳，選填）", type: "number", placeholder: "0" },
-        { key: "limit", label: "信用卡額度（選填，用來算可用額度）", type: "number", placeholder: "0 表示不設定" },
-        { key: "billingDay", label: "結帳日（每月幾號）", type: "number", placeholder: "20" },
-        { key: "dueDay", label: "繳款截止日（每月幾號）", type: "number", placeholder: "5" }
+        { key: "name", label: "卡片名稱", type: "text", placeholder: "" },
+        { key: "statementAmount", label: "本期應繳金額", type: "number", placeholder: "" },
+        { key: "unbilled", label: "已刷卡未出帳金額", type: "number", placeholder: "" },
+        { key: "limit", label: "信用卡額度", type: "number", placeholder: "" },
+        { key: "billingDay", label: "結帳日", type: "number", placeholder: "" },
+        { key: "dueDay", label: "繳款截止日", type: "number", placeholder: "" }
       ],
       initial: existing ? {
         name: existing.name, statementAmount: existing.statementAmount, unbilled: existing.unbilled,
@@ -2444,15 +2444,15 @@
     modalBody.innerHTML = `
       <h3>${existing ? "編輯固定繳費項目" : "新增固定繳費項目"}</h3>
       <label class="field-label">項目名稱</label>
-      <input id="recName" class="text-input" placeholder="例如：房租、水電費" value="${existing ? escapeAttr(existing.name) : ""}">
+      <input id="recName" class="text-input" placeholder="" value="${existing ? escapeAttr(existing.name) : ""}">
       <div class="row">
         <div class="field">
           <label class="field-label">金額</label>
-          <input id="recAmount" class="text-input" type="number" min="0" placeholder="0" value="${existing ? existing.amount : ""}">
+          <input id="recAmount" class="text-input" type="number" min="0" placeholder="" value="${existing ? existing.amount : ""}">
         </div>
         <div class="field">
           <label class="field-label">每月幾號</label>
-          <input id="recResetDay" class="text-input" type="number" min="1" max="28" placeholder="1" value="${existing ? existing.resetDay : ""}">
+          <input id="recResetDay" class="text-input" type="number" min="1" max="28" placeholder="" value="${existing ? existing.resetDay : ""}">
         </div>
       </div>
       <label class="field-label">繳費方式</label>
@@ -2463,7 +2463,7 @@
       <div id="recAutoFields" ${autoDeduct ? "" : 'style="display:none;"'}>
         <label class="field-label">用什麼方式自動扣款</label>
         <select id="recAutoMethod" class="text-input">${methodOptions()}</select>
-        <label class="field-label">自動扣款到什麼時候（留空表示一直自動扣下去）</label>
+        <label class="field-label">自動扣款到什麼時候</label>
         <input id="recAutoUntil" class="text-input" type="month" value="${existing && existing.autoUntil ? existing.autoUntil : ""}">
         <p class="hint-text" style="margin-top:2px;">到期後這個項目不會被刪除，只是改回「每月自己勾選繳款」。</p>
       </div>
@@ -2662,15 +2662,15 @@
     modalBody.innerHTML = `
       <h3>${existing ? "編輯定期定額" : "新增定期定額"}</h3>
       <label class="field-label">股票代號／名稱</label>
-      <input id="dcaName" class="text-input" placeholder="例如：0052" value="${existing ? escapeAttr(existing.name) : ""}">
+      <input id="dcaName" class="text-input" placeholder="" value="${existing ? escapeAttr(existing.name) : ""}">
       <div class="row">
         <div class="field">
           <label class="field-label">每月定期定額金額</label>
-          <input id="dcaAmount" class="text-input" type="number" min="0" placeholder="0" value="${existing ? existing.amount : ""}">
+          <input id="dcaAmount" class="text-input" type="number" min="0" placeholder="" value="${existing ? existing.amount : ""}">
         </div>
         <div class="field">
           <label class="field-label">每月約幾號扣款</label>
-          <input id="dcaResetDay" class="text-input" type="number" min="1" max="28" placeholder="5" value="${existing ? existing.resetDay : ""}">
+          <input id="dcaResetDay" class="text-input" type="number" min="1" max="28" placeholder="" value="${existing ? existing.resetDay : ""}">
         </div>
       </div>
       <label class="field-label">用哪個帳戶扣款</label>
@@ -2736,9 +2736,9 @@
     openModal({
       title: existing ? "編輯應收款項" : "新增應收款項",
       fields: [
-        { key: "debtor", label: "對象是誰", type: "text", placeholder: "例如：Jerry" },
-        { key: "note", label: "因為什麼事（選填）", type: "text", placeholder: "例如：午餐、早餐" },
-        { key: "amount", label: "金額", type: "number", placeholder: "0" }
+        { key: "debtor", label: "對象是誰", type: "text", placeholder: "" },
+        { key: "note", label: "因為什麼事", type: "text", placeholder: "" },
+        { key: "amount", label: "金額", type: "number", placeholder: "" }
       ],
       initial: existing ? { debtor: existing.debtor, note: existing.note, amount: existing.amount } : null,
       onSave: (v) => {
@@ -2818,7 +2818,7 @@
       <ul class="plain-list modal-scroll-list">${entryRows}</ul>
       <label class="field-label">收款方式</label>
       <select id="receivablePayMethod" class="text-input">${methodOptions}</select>
-      <label class="field-label">抵減哪個生活支出分類？（選填）</label>
+      <label class="field-label">抵減哪個生活支出分類？</label>
       <select id="receivablePayCategory" class="text-input">${reimburseOptions}</select>
       <p class="hint-text">這筆錢會加入你選的帳戶餘額，但不計入一般收入，交易紀錄會寫成「${escapeHtml(debtor)}還款」。</p>
       <div class="modal-actions">
@@ -3021,23 +3021,23 @@
       <div class="field-label" style="margin-top:14px;">我新增的關鍵字</div>
       <div class="chip-list" id="kwCustomChips"></div>
       <div class="row" style="margin-top:10px;">
-        <input id="kwNewInput" class="text-input" placeholder="輸入新關鍵字，例如：青菜">
+        <input id="kwNewInput" class="text-input" placeholder="">
         <button class="add-mini" id="kwAddBtn" style="white-space:nowrap;">新增</button>
       </div>
       <div class="field-label" style="margin-top:18px;">新增一個屬於自己的分類</div>
       <div class="row">
-        <input id="kwNewCategoryInput" class="text-input" placeholder="例如：交通、寵物">
+        <input id="kwNewCategoryInput" class="text-input" placeholder="">
         <button class="add-mini" id="kwAddCategoryBtn" style="white-space:nowrap;">新增分類</button>
       </div>
       <label class="field-label">分類顏色</label>
       <div class="color-picker-row">
         <div class="swatch-list" id="kwSwatchList"></div>
         <input type="color" id="kwColorPicker" class="color-well" value="${newCategoryColor}" title="用滑動式調色盤自訂顏色">
-        <input type="text" id="kwColorHex" class="text-input color-hex-input" placeholder="#RRGGBB" maxlength="7" value="${newCategoryColor}">
+        <input type="text" id="kwColorHex" class="text-input color-hex-input" placeholder="" maxlength="7" value="${newCategoryColor}">
       </div>
       <label class="checkbox-label">
         <input type="checkbox" id="kwNewCategoryPL" checked>
-        <span>計入本月支出/收入統計（損益）</span>
+        <span>計入本月支出/收入統計</span>
       </label>
       <p class="hint-text" id="kwNewCategoryHint"></p>
       <div class="modal-actions">
@@ -3117,7 +3117,7 @@
       let html = `
         <label class="checkbox-label" style="margin-top:10px;">
           <input type="checkbox" id="kwPLToggle" ${pl ? "checked" : ""}>
-          <span>計入本月支出/收入統計（損益）</span>
+          <span>計入本月支出/收入統計</span>
         </label>`;
       if (isCustom) {
         html += `
