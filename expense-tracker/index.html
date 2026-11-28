@@ -233,10 +233,21 @@
       <div class="card">
         <div class="section-head">
           <h2>信用卡管理</h2>
-          <button class="add-mini" id="addCardBtn">+ 新增卡片</button>
+          <div class="section-actions">
+            <button class="add-mini secondary" id="cardLimitBtn">⚙ 水位上限</button>
+            <button class="add-mini" id="addCardBtn">+ 新增卡片</button>
+          </div>
         </div>
         <ul id="cardList" class="card-list"></ul>
         <p class="empty-hint" id="cardsEmpty">還沒有新增信用卡</p>
+        <div class="total-row">
+          <span>未出帳金額合計</span>
+          <strong id="cardUnbilledTotal">$0</strong>
+        </div>
+        <div id="cardUnbilledLimitBlock" style="display:none;">
+          <div class="water-level-bar"><div class="water-level-fill" id="cardUnbilledLimitFill"></div></div>
+          <div class="water-level-text" id="cardUnbilledLimitText"></div>
+        </div>
       </div>
     </section>
 

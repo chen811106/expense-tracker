@@ -2117,6 +2117,24 @@
     const empty = document.getElementById("cardsEmpty");
     empty.style.display = state.cards.length ? "none" : "block";
 
+    const totalUnbilled = state.cards.reduce((sum, c) => sum + (c.unbilled || 0), 0);
+    document.getElementById("cardUnbilledTotal").textContent = money(totalUnbilled);
+    const limitBlock = document.getElementById("cardUnbilledLimitBlock");
+    const limit = state.cardUnbilledLimit || 0;
+    if (limit > 0) {
+      limitBlock.style.display = "";
+      const pct = Math.min(100, Math.max(0, (totalUnbilled / limit) * 100));
+      const fill = document.getElementById("cardUnbilledLimitFill");
+      fill.style.width = pct + "%";
+      fill.classList.toggle("high", totalUnbilled >= limit);
+      document.getElementById("cardUnbilledLimitText").textContent =
+        totalUnbilled >= limit
+          ? `已超過水位上限 ${money(limit)}`
+          : `水位上限 ${money(limit)}，還可以刷 ${money(limit - totalUnbilled)}`;
+    } else {
+      limitBlock.style.display = "none";
+    }
+
     list.innerHTML = state.cards.map((c, i) => {
       const statementAmount = c.statementAmount || 0;
       const unbilled = c.unbilled || 0;
@@ -2222,6 +2240,20 @@
       }
     });
   }
+
+  document.getElementById("cardLimitBtn").addEventListener("click", () => {
+    openModal({
+      title: "設定未出帳金額水位上限",
+      fields: [
+        { key: "limit", label: "水位上限", type: "number", placeholder: "" }
+      ],
+      initial: { limit: state.cardUnbilledLimit || "" },
+      onSave: (v) => {
+        state.cardUnbilledLimit = parseFloat(v.limit) || 0;
+        renderCards();
+      }
+    });
+  });
 
   /* ================= 信用卡繳款 =================
      記一筆「繳款」：從某個帳戶（或現金）付錢，把這張卡「本期應繳金額」
